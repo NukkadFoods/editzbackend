@@ -2,14 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "index_advanced.py",
+      "src": "api/index.py",
       "use": "@vercel/python"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "index_advanced.py"
+      "dest": "api/index.py"
     }
   ]
 }
