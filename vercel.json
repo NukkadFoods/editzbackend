@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "name": "pdf-editor-backend-advanced",
+  "description": "Advanced PDF Editor Backend with Intelligent Alignment & Multi-Page Support",
+  "builds": [
+    {
+      "src": "index_advanced.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "index_advanced.py"
+    }
+  ],
+  "env": {
+    "PYTHONPATH": "/var/task",
+    "FRONTEND_URL": "https://your-frontend-domain.vercel.app"
+  },
+  "functions": {
+    "index_advanced.py": {
+      "maxDuration": 30
+    }
+  }
+}

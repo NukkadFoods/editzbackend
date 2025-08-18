@@ -1,0 +1,20 @@
+{
+  "name": "pdf-editor-backend-advanced",
+  "version": "3.0.0",
+  "description": "Advanced PDF Editor Backend with Intelligent Alignment",
+  "scripts": {
+    "dev": "python3 index_advanced.py",
+    "start": "python3 index_advanced.py"
+  },
+  "keywords": [
+    "pdf",
+    "editor",
+    "fastapi",
+    "serverless",
+    "vercel",
+    "intelligent-alignment",
+    "multi-page"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
