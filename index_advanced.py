@@ -58,6 +58,12 @@ class EditRequest(BaseModel):
     metadata_key: str
     new_text: str
 
+class FrontendEditRequest(BaseModel):
+    pageNumber: int
+    oldText: str
+    newText: str
+    textIndex: int = None
+
 def extract_enhanced_metadata(pdf_content: bytes) -> Dict[str, Any]:
     """Extract text metadata with enhanced boldness and size detection using only PyMuPDF"""
     doc = fitz.open(stream=pdf_content, filetype="pdf")
@@ -228,7 +234,12 @@ def get_smart_positioning(text: str, old_text: str, bbox: tuple, page_width: flo
         return (x0, y0, new_x1, y1)
 
 @app.post("/upload")
-async def upload_pdf(file: UploadFile = File(...)):
+async def upload_pdf_legacy(file: UploadFile = File(...)):
+    """Legacy upload endpoint for backward compatibility"""
+    return await upload_pdf_main(file)
+
+@app.post("/upload-pdf")
+async def upload_pdf_main(file: UploadFile = File(...)):
     """Upload PDF and extract metadata for editing"""
     
     if not file.filename.endswith('.pdf'):
@@ -264,7 +275,74 @@ async def upload_pdf(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error processing PDF: {str(e)}")
 
 @app.post("/edit")
-async def edit_pdf(edit_request: EditRequest):
+async def edit_pdf_legacy(edit_request: EditRequest):
+    """Legacy edit endpoint for backward compatibility"""
+    return await edit_pdf_main(edit_request)
+
+@app.post("/pdf/{file_id}/edit")
+async def edit_pdf_frontend(file_id: str, edit_request: FrontendEditRequest):
+    """Frontend-compatible edit endpoint"""
+    
+    # Get stored metadata for this file
+    temp_file_path = f"/tmp/{file_id}.pdf"
+    if not os.path.exists(temp_file_path):
+        # For now, use temp_file as fallback
+        temp_file_path = "/tmp/temp_file.pdf"
+        if not os.path.exists(temp_file_path):
+            raise HTTPException(status_code=404, detail="PDF file not found")
+    
+    # Read and extract metadata to find matching text
+    with open(temp_file_path, "rb") as f:
+        pdf_content = f.read()
+    
+    metadata = extract_enhanced_metadata(pdf_content)
+    
+    # Find text item that matches oldText on the specified page
+    matching_key = None
+    for key, item in metadata.items():
+        if (item['page'] == edit_request.pageNumber and 
+            edit_request.oldText.strip() in item['text'].strip()):
+            matching_key = key
+            break
+    
+    if not matching_key:
+        # If exact match not found, try partial match
+        for key, item in metadata.items():
+            if (item['page'] == edit_request.pageNumber and 
+                item['text'].strip() in edit_request.oldText.strip()):
+                matching_key = key
+                break
+    
+    if not matching_key:
+        return {
+            "success": False,
+            "message": f"Text '{edit_request.oldText}' not found on page {edit_request.pageNumber}",
+            "available_texts": [item['text'] for item in metadata.values() if item['page'] == edit_request.pageNumber]
+        }
+    
+    # Convert to internal EditRequest format
+    internal_request = EditRequest(
+        page=edit_request.pageNumber,
+        metadata_key=matching_key,
+        new_text=edit_request.newText
+    )
+    
+    result = await edit_pdf_main(internal_request)
+    
+    # Convert result to frontend format
+    if result.get("success"):
+        return {
+            "success": True,
+            "message": "Text edited successfully",
+            "fileId": file_id
+        }
+    else:
+        return {
+            "success": False,
+            "message": result.get("detail", "Edit failed")
+        }
+
+async def edit_pdf_main(edit_request: EditRequest):
     """Enhanced PDF text editing with perfect boldness and size matching"""
     
     try:
@@ -380,6 +458,29 @@ async def edit_pdf(edit_request: EditRequest):
     except Exception as e:
         print(f"❌ Error in text replacement: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error editing PDF: {str(e)}")
+
+@app.get("/pdf/{file_id}/download")
+async def download_pdf(file_id: str):
+    """Download the edited PDF file"""
+    
+    # For now, return the temp file (in production, you'd manage file storage properly)
+    temp_file_path = f"/tmp/{file_id}.pdf"
+    if not os.path.exists(temp_file_path):
+        temp_file_path = "/tmp/temp_file.pdf"
+        if not os.path.exists(temp_file_path):
+            raise HTTPException(status_code=404, detail="PDF file not found")
+    
+    try:
+        with open(temp_file_path, "rb") as f:
+            pdf_content = f.read()
+        
+        return Response(
+            content=pdf_content,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=edited_{file_id}.pdf"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error downloading PDF: {str(e)}")
 
 # For Vercel serverless deployment
 if __name__ == "__main__":
