@@ -128,11 +128,9 @@ print(f"🌐 Configured CORS for frontend: {frontend_url}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https://.*\.vercel\.app$",  # Allow any Vercel domain
     allow_origins=[
         "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
+        "https://*.vercel.app", 
         "https://editz.vercel.app",
         frontend_url
     ],
