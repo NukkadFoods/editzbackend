@@ -711,7 +711,8 @@ async def download_pdf(file_id: str, download_request: DownloadRequest):
 async def health_check():
     return {"status": "healthy", "timestamp": "2025-08-18", "version": "3.2.0"}
 
-# Export the app for Vercel - multiple export patterns for compatibility
-app_instance = app
-handler = app
-application = app
+# Export the app for Vercel - ASGI compatible
+from mangum import Mangum
+
+# Wrap FastAPI with Mangum for serverless compatibility
+handler = Mangum(app)
