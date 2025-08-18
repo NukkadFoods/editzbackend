@@ -714,5 +714,8 @@ async def health_check():
 # Export the app for Vercel - ASGI compatible
 from mangum import Mangum
 
-# Wrap FastAPI with Mangum for serverless compatibility
+# Wrap FastAPI with Mangum for serverless compatibility  
 handler = Mangum(app)
+
+# For Vercel compatibility, expose the handler
+app = handler
