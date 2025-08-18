@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -206,23 +206,82 @@ app = FastAPI(title="PDF Editor Backend - Advanced")
 # Get the frontend URL from environment variable (for Vercel)
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-# Add CORS middleware with enhanced configuration for Vercel
+# Add CORS middleware with FULL Vercel compatibility
 print(f"🌐 Configured CORS for frontend: {frontend_url}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https://.*\.vercel\.app$",  # Allow any Vercel domain
+    # Allow ALL Vercel domains with comprehensive regex patterns
+    allow_origin_regex=r"^https://.*\.vercel\.app$|^https://.*--.*\.vercel\.app$",  
     allow_origins=[
+        # Local development
         "http://localhost:3000",
-        "http://localhost:3001",
+        "http://localhost:3001", 
         "http://127.0.0.1:3000",
+        "http://localhost:5173",  # Vite dev server
+        
+        # Vercel deployment patterns
         "https://editz.vercel.app",
-        frontend_url
+        "https://editzbackend.vercel.app", 
+        "https://editz-frontend.vercel.app",
+        "https://editz-mahendrabahubali.vercel.app",
+        
+        # Dynamic Vercel URLs (deployment previews)
+        "https://editz-git-main-nukkadfoods.vercel.app",
+        "https://editz-git-main-ajay-s-projects-7337fb6b.vercel.app",
+        
+        # Environment variable
+        frontend_url,
+        
+        # Allow all origins for maximum compatibility (production ready)
+        "*"
     ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,  # Set to False when using "*" origin
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH", "*"],
+    allow_headers=[
+        "Accept",
+        "Accept-Language", 
+        "Content-Language",
+        "Content-Type",
+        "Authorization",
+        "X-Requested-With",
+        "Origin",
+        "Access-Control-Request-Method",
+        "Access-Control-Request-Headers",
+        "*"
+    ],
 )
+
+# Add explicit CORS preflight handler for maximum compatibility
+@app.options("/{full_path:path}")
+async def preflight_handler(request: Request, full_path: str):
+    """Handle CORS preflight requests for all routes"""
+    return Response(
+        content="",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400",
+        }
+    )
+
+# Additional CORS middleware for edge cases
+@app.middleware("http")
+async def add_cors_headers(request: Request, call_next):
+    """Add CORS headers to all responses"""
+    response = await call_next(request)
+    
+    # Get origin from request
+    origin = request.headers.get("origin")
+    
+    # Set CORS headers
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Max-Age"] = "86400"
+    
+    return response
 
 class EditRequest(BaseModel):
     page: int
