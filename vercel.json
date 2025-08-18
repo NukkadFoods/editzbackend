@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "description": "Advanced PDF Editor Backend with Intelligent Alignment & Multi-Page Support",
   "builds": [
     {
       "src": "index_advanced.py",
@@ -12,8 +11,5 @@
       "src": "/(.*)",
       "dest": "index_advanced.py"
     }
-  ],
-  "env": {
-    "PYTHONPATH": "/var/task"
-  }
+  ]
 }
