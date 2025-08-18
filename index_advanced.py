@@ -5,17 +5,100 @@ from pydantic import BaseModel
 import os
 import uuid
 import io
-import fitz  # PyMuPDF
-import pdfplumber  # Better font extraction
-import pikepdf  # Direct PDF content editing
-from fontTools.ttLib import TTFont  # Font analysis
-from text_context_analyzer import TextShiftingAnalyzer
-from intelligent_text_shifter import IntelligentTextShifter
+import fitz  # PyMuPDF - ONLY dependency for PDF processing
 import base64
 import re
 import math
 from typing import Dict, List, Tuple, Any
-from enhanced_metadata import extract_complete_text_metadata, analyze_text_differences
+
+def extract_pymupdf_metadata(pdf_content: bytes, page_num: int = None) -> Dict[str, Any]:
+    """
+    Extract enhanced text metadata using ONLY PyMuPDF - lightweight but powerful
+    """
+    doc = fitz.open(stream=pdf_content, filetype="pdf")
+    metadata = {}
+    
+    # Process specific page or all pages
+    pages_to_process = [page_num] if page_num is not None else range(len(doc))
+    
+    for page_idx in pages_to_process:
+        if page_idx >= len(doc):
+            continue
+            
+        page = doc[page_idx]
+        
+        # Get text with detailed font information using PyMuPDF's dict format
+        text_dict = page.get_text("dict", flags=11)
+        
+        for block in text_dict["blocks"]:
+            if "lines" in block:
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        text = span["text"].strip()
+                        if text:  # Only process non-empty text
+                            
+                            # Enhanced font analysis using PyMuPDF
+                            font_name = span["font"]
+                            font_size = span["size"]
+                            flags = span["flags"]
+                            bbox = span["bbox"]
+                            color = span["color"]
+                            
+                            # ENHANCED BOLDNESS DETECTION using PyMuPDF flags
+                            is_bold_flag = bool(flags & 2**4)  # Bold flag (bit 16)
+                            is_bold_name = any(bold_word in font_name.lower() 
+                                             for bold_word in ['bold', 'heavy', 'black'])
+                            
+                            # Calculate boldness score
+                            boldness_score = 0
+                            if is_bold_flag:
+                                boldness_score += 0.6
+                            if is_bold_name:
+                                boldness_score += 0.4
+                            
+                            # Font weight estimation
+                            font_weight = 700 if (is_bold_flag or is_bold_name) else 400
+                            
+                            # SIZE ANALYSIS - actual rendered height
+                            actual_height = bbox[3] - bbox[1]
+                            size_ratio = actual_height / font_size if font_size > 0 else 1.0
+                            
+                            # RGB Color conversion
+                            if isinstance(color, int):
+                                r = (color >> 16) & 255
+                                g = (color >> 8) & 255  
+                                b = color & 255
+                                rgb_color = (r/255.0, g/255.0, b/255.0)
+                            else:
+                                rgb_color = (0, 0, 0)  # Default black
+                            
+                            # Create unique key
+                            key = f"page_{page_idx+1}_text_{len(metadata)}"
+                            
+                            metadata[key] = {
+                                "text": text,
+                                "bbox": list(bbox),
+                                "page": page_idx + 1,
+                                "font_name": font_name,
+                                "font_size": font_size,
+                                "actual_height": actual_height,
+                                "size_ratio": size_ratio,
+                                "color": rgb_color,
+                                "color_int": color,
+                                "flags": flags,
+                                "is_bold": is_bold_flag or is_bold_name,
+                                "boldness_score": boldness_score,
+                                "font_weight": font_weight,
+                                "is_italic": bool(flags & 2**1),  # Italic flag
+                                "clean_font_name": font_name,
+                                "visual_boldness_score": boldness_score,
+                                "is_bold_flag": is_bold_flag,
+                                "is_bold_name": is_bold_name,
+                                "is_bold_final": is_bold_flag or is_bold_name
+                            }
+    
+    doc.close()
+    return metadata
 
 def get_smart_alignment(text: str, old_text: str, line_text: str, bbox: tuple, page_width: float, all_text_items: list) -> dict:
     """
@@ -190,28 +273,9 @@ async def upload_pdf(file: UploadFile = File(...)):
         
         print(f"📄 Processing PDF: {len(file_content)} bytes, ID: {file_id}")
         
-        # STEP 1: Extract embedded fonts using pikepdf
+        # Skip embedded font extraction - using PyMuPDF-only approach
         embedded_fonts = {}
-        try:
-            with pikepdf.open(io.BytesIO(file_content)) as pdf:
-                for page_num, page in enumerate(pdf.pages):
-                    if '/Resources' in page and '/Font' in page['/Resources']:
-                        fonts = page['/Resources']['/Font']
-                        for font_name, font_obj in fonts.items():
-                            if '/FontDescriptor' in font_obj:
-                                font_descriptor = font_obj['/FontDescriptor']
-                                if '/FontFile2' in font_descriptor or '/FontFile' in font_descriptor:
-                                    # Extract embedded font data
-                                    font_data_key = '/FontFile2' if '/FontFile2' in font_descriptor else '/FontFile'
-                                    font_stream = font_descriptor[font_data_key]
-                                    embedded_fonts[str(font_name)] = {
-                                        'font_data': bytes(font_stream),
-                                        'font_name': str(font_obj.get('/BaseFont', font_name)),
-                                        'is_embedded': True
-                                    }
-                                    print(f"🔤 Extracted embedded font: {font_name} -> {font_obj.get('/BaseFont', font_name)}")
-        except Exception as e:
-            print(f"⚠️ Font extraction warning: {e}")
+        print(f"⚠️ Font extraction warning: Using PyMuPDF-only approach")
         
         # STEP 2: Use ENHANCED metadata extraction with visual boldness analysis
         print("🔍 STARTING ENHANCED METADATA EXTRACTION...")
@@ -230,9 +294,12 @@ async def upload_pdf(file: UploadFile = File(...)):
             # Extract metadata from each page
             for page_idx in range(total_pages):
                 print(f"🔍 Processing page {page_idx + 1}/{total_pages}...")
-                page_metadata = extract_complete_text_metadata(file_content, page_num=page_idx)
+                # Use PyMuPDF-only metadata extraction
+                page_metadata = extract_pymupdf_metadata(file_content, page_num=page_idx)
                 if page_metadata:
-                    all_metadata.extend(page_metadata)
+                    # page_metadata is a dict, convert to list of metadata items
+                    for key, metadata in page_metadata.items():
+                        all_metadata.append(metadata)
             
             if not all_metadata:
                 raise Exception("Enhanced extraction returned empty results")
@@ -251,15 +318,15 @@ async def upload_pdf(file: UploadFile = File(...)):
                     "page": metadata["page"],  # Use actual page number from metadata
                     "x": metadata["bbox"][0],
                     "y": metadata["bbox"][1],
-                    "width": metadata["text_width"],
-                    "height": metadata["text_height"],
+                    "width": metadata["bbox"][2] - metadata["bbox"][0],  # Calculate width from bbox
+                    "height": metadata["bbox"][3] - metadata["bbox"][1],  # Calculate height from bbox
                     "font": metadata["clean_font_name"],
                     "size": metadata["font_size"],
                     "metadata_key": metadata_key,
                     "color": metadata["color_int"],
-                    "flags": metadata["font_flags"],
-                    "is_bold": metadata["is_bold_final"],
-                    "is_italic": metadata["is_italic_final"],
+                    "flags": metadata["flags"],
+                    "is_bold": metadata["is_bold"],
+                    "is_italic": metadata["is_italic"],
                     "visual_boldness": metadata["visual_boldness_score"]
                 }
                 
@@ -268,50 +335,27 @@ async def upload_pdf(file: UploadFile = File(...)):
                     # Basic text properties
                     "text": metadata["text"],
                     "bbox": metadata["bbox"],
-                    "origin": metadata["origin"],
-                    "page": metadata["page"],  # Use actual page number from metadata
+                    "page": metadata["page"],
                     
                     # Font properties
                     "font": metadata["clean_font_name"],
-                    "raw_font_name": metadata["raw_font_name"],
                     "size": metadata["font_size"],
-                    "font_flags": metadata["font_flags"],
+                    "flags": metadata["flags"],
                     
                     # Enhanced boldness detection
-                    "is_bold": metadata["is_bold_final"],
-                    "is_bold_flag": metadata["is_bold_flag"],
-                    "is_bold_name": metadata["is_bold_name"],
+                    "is_bold": metadata["is_bold"],
                     "visual_boldness_score": metadata["visual_boldness_score"],
                     
-                    # Style properties
-                    "is_italic": metadata["is_italic_final"],
-                    "is_light": metadata["is_light"],
-                    "is_medium": metadata["is_medium"],
-                    "is_serif": metadata["is_serif"],
-                    "is_monospace": metadata["is_monospace"],
+                    # Style properties  
+                    "is_italic": metadata["is_italic"],
                     
                     # Color and rendering
                     "color": metadata["color_int"],
-                    "color_rgb": metadata["color_rgb"],
-                    "render_mode": metadata["render_mode"],
-                    "underline": metadata["underline"],
-                    "strikeout": metadata["strikeout"],
+                    "color_rgb": [int(c*255) for c in metadata["color"]],  # Convert back to RGB 0-255
                     
-                    # Spacing and positioning
-                    "char_spacing": metadata["char_spacing"],
-                    "word_spacing": metadata["word_spacing"],
-                    "avg_char_width": metadata["avg_char_width"],
-                    
-                    # Transform properties
-                    "transform_matrix": metadata["transform_matrix"],
-                    "rotation_degrees": metadata["rotation_degrees"],
-                    "scale_x": metadata["scale_x"],
-                    "scale_y": metadata["scale_y"],
-                    
-                    # Character analysis
-                    "char_count": metadata["char_count"],
-                    "text_width": metadata["text_width"],
-                    "text_height": metadata["text_height"]
+                    # Spacing and positioning (using defaults for now)
+                    "char_spacing": 0.0,
+                    "word_spacing": 0.0
                 }
                 
                 text_items.append(text_item)
@@ -536,12 +580,26 @@ async def edit_text(file_id: str, edit_request: EditRequest):
         print(f"📏 Original Position: {original_bbox}, Font: {font_name}, Size: {font_size}")
         print(f"🎨 Style: Bold={is_bold}, Italic={is_italic}, Visual Boldness={visual_boldness}")
         
-        # 🧠 INTELLIGENT POSITIONING: Analyze text context and calculate optimal position
+        # 🧠 INTELLIGENT POSITIONING: Simple context analysis using PyMuPDF
         print(f"🧠 ANALYZING TEXT CONTEXT...")
         try:
-            analyzer = TextShiftingAnalyzer(pdf_content, edit_request.page - 1)
-            text_context = analyzer.analyze_text_context(original_text, original_bbox)
-            analyzer.close()
+            # Get page width first
+            page_width = pymupdf_page.rect.width
+            
+            # Get page context for intelligent positioning
+            page_metadata = extract_pymupdf_metadata(pdf_content, page_num=edit_request.page - 1)
+            all_text_items = list(page_metadata.values())
+            
+            # Simple context analysis
+            text_context = {
+                'alignment': 'center' if abs((original_bbox[0] + original_bbox[2])/2 - page_width/2) < page_width * 0.15 else 'left',
+                'is_near_center': abs((original_bbox[0] + original_bbox[2])/2 - page_width/2) < page_width * 0.15,
+                'is_list_item': False,  # Added missing variable
+                'is_header': False,     # Added missing variable  
+                'is_justified': False,  # Added missing variable
+                'spacing_analysis': {'has_adequate_space': True},
+                'context_items': len(all_text_items)
+            }
             
             print(f"📊 CONTEXT ANALYSIS:")
             print(f"   Alignment: {text_context['alignment']}")
@@ -552,7 +610,6 @@ async def edit_text(file_id: str, edit_request: EditRequest):
             # USE NEW SMART ALIGNMENT SYSTEM
             # Get all text items for context (simplified for now)
             all_text_items = [{'x': original_bbox[0], 'y': original_bbox[1], 'text': original_text}]
-            page_width = pymupdf_page.rect.width
             
             smart_alignment = get_smart_alignment(
                 text=new_text,
@@ -564,7 +621,7 @@ async def edit_text(file_id: str, edit_request: EditRequest):
             )
             
             print(f"🎯 SMART ALIGNMENT STRATEGY: {smart_alignment['strategy']}")
-            print(f"� REASONING: {smart_alignment['reasoning']}")
+            print(f"📘 REASONING: {smart_alignment['reasoning']}")
             print(f"📏 New Position: {smart_alignment['new_bbox']}")
             
             # Use the smart alignment result
@@ -576,6 +633,12 @@ async def edit_text(file_id: str, edit_request: EditRequest):
             print(f"🔄 Falling back to original position")
             new_bbox = original_bbox
             positioning_strategy = "fallback"
+            # Initialize smart_alignment for fallback case
+            smart_alignment = {
+                'strategy': 'fallback',
+                'reasoning': 'Error in intelligent positioning',
+                'new_bbox': original_bbox
+            }
         
         # Determine effective font weight based on multiple factors
         # High visual boldness score or explicit bold flag should result in bold text
