@@ -136,18 +136,23 @@ def determine_text_context(text: str, line_text: str, bbox: tuple, page_width: f
     
     # --- RULE 4: Detect Isolated Text (should center relative to original position) ---
     # If text appears to be standalone/isolated (not part of structured content)
-    text_width = bbox[2] - bbox[0]
     
     # Check if this looks like an isolated element:
-    # - Single short word/phrase
-    # - Not part of a longer sentence
-    # - Appears to be a label or header element
+    is_short_standalone = len(text.strip()) <= 25  # Allow slightly longer for station names
+    is_isolated_line = len(line_text.strip()) == len(text.strip())  # Text is the whole line
+    is_label_like = bool(re.match(r'^[A-Z0-9\s\(\)]+$', text.strip()))  # All caps/numbers/parens
+    is_station_like = bool(re.match(r'^[A-Z\s]+\s*\([A-Z0-9]+\)$', text.strip()))  # "SATNA (STA)" pattern
+    is_code_like = bool(re.match(r'^[A-Z0-9]+$', text.strip()))  # Pure codes like "NDLS"
     
-    is_short = len(text.strip()) <= 20  # Short text
-    is_isolated = len(line_text.strip()) == len(text.strip())  # Text is the whole line
-    is_label_like = bool(re.match(r'^[A-Z0-9\s\(\)]+$', text.strip()))  # All caps/numbers
+    print(f"🔍 ISOLATED DETECTION for '{text}':")
+    print(f"   is_short_standalone: {is_short_standalone}")
+    print(f"   is_isolated_line: {is_isolated_line}")  
+    print(f"   is_label_like: {is_label_like}")
+    print(f"   is_station_like: {is_station_like}")
+    print(f"   is_code_like: {is_code_like}")
     
-    if (is_short and is_isolated) or is_label_like:
+    if (is_short_standalone and is_isolated_line) or is_station_like or (is_label_like and is_short_standalone):
+        print(f"   → DETECTED as isolated_center")
         return 'isolated_center'
     
     # --- RULE 5: Default ---
@@ -190,10 +195,33 @@ def calculate_new_text_position(
         new_x1 = new_x0 + new_text_width
 
     elif original_text_context == 'isolated_center':
-        # Center relative to ORIGINAL center position, NOT PDF center
+        # PRESERVE THE EXACT CENTER POINT of the original element
+        # Calculate original element's center point
         original_center_x = (orig_x0 + orig_x1) / 2
+        
+        # Position new text so its center matches the original center exactly
         new_x0 = original_center_x - (new_text_width / 2)
-        new_x1 = new_x0 + new_text_width
+        new_x1 = original_center_x + (new_text_width / 2)
+        
+        print(f"🎯 ISOLATED CENTER PRESERVATION:")
+        print(f"   Original element center: {original_center_x:.2f}")
+        print(f"   Original bbox: [{orig_x0:.2f}, {orig_y0:.2f}, {orig_x1:.2f}, {orig_y1:.2f}]")
+        print(f"   New text width: {new_text_width:.2f}")
+        print(f"   New bbox: [{new_x0:.2f}, {new_y0:.2f}, {new_x1:.2f}, {new_y1:.2f}]")
+        print(f"   New element center: {(new_x0 + new_x1) / 2:.2f}")
+        print(f"   Center preserved: {abs(original_center_x - (new_x0 + new_x1) / 2) < 0.1}")
+        
+        # Ensure we don't go off the page
+        if new_x0 < 0:
+            shift = -new_x0
+            new_x0 = 0
+            new_x1 = new_text_width
+            print(f"   Adjusted for page boundary: shifted right by {shift:.2f}")
+        elif new_x1 > page_width:
+            shift = new_x1 - page_width
+            new_x1 = page_width
+            new_x0 = page_width - new_text_width
+            print(f"   Adjusted for page boundary: shifted left by {shift:.2f}")
 
     elif original_text_context == 'right_aligned':
         # Keep right edge fixed, adjust left edge
