@@ -638,15 +638,17 @@ async def edit_text(file_id: str, edit_request: EditRequest):
         pymupdf_page.draw_rect(original_text_rect, color=None, fill=fitz.utils.getColor("white"))
         
         # Use the intelligently calculated position for new text with baseline adjustment
-        text_baseline_y = new_bbox[3] - (font_size * 0.2)  # Adjust for font baseline
-        text_point = fitz.Point(new_bbox[0], text_baseline_y)
+        # FORCE USE EXACT ORIGINAL COORDINATES - NO PROCESSING
+        original_text_x = original_bbox[0]  # Exact original X 
+        original_text_y = original_bbox[1]  # Exact original Y (top)
+        text_point = fitz.Point(original_text_x, original_text_y)
         
-        print(f"📍 ENHANCED TEXT PLACEMENT:")
+        print(f"📍 FORCED ORIGINAL COORDINATES:")
         print(f"   Original bbox: {original_bbox}")
-        print(f"   New bbox: {new_bbox}")
+        print(f"   Forced X: {original_text_x} (original_bbox[0])")
+        print(f"   Forced Y: {original_text_y} (original_bbox[1])")
         print(f"   Text point: ({text_point.x:.2f}, {text_point.y:.2f})")
-        print(f"   Baseline adjusted Y: {text_baseline_y:.2f}")
-        print(f"   Font size: {font_size}")
+        print(f"   NO BASELINE ADJUSTMENT!")
         print(f"   Strategy: {positioning_strategy}")
         print(f"   Spacing: char={char_spacing:.1f}, word={word_spacing:.1f}")
         
