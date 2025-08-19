@@ -2,14 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/handler.py",
-      "use": "@vercel/python"
+      "src": "api/serverless.py",
+      "use": "@vercel/python@4.8.0"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/api/handler.py"
+      "dest": "api/serverless.py"
     }
   ]
 }

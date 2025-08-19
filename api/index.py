@@ -710,3 +710,12 @@ async def download_pdf(file_id: str, download_request: DownloadRequest):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": "2025-08-18", "version": "3.2.0"}
+
+# Simple handler function for Vercel
+def handler(event, context):
+    """
+    Vercel handler function
+    """
+    from mangum import Mangum
+    asgi_handler = Mangum(app)
+    return asgi_handler(event, context)
