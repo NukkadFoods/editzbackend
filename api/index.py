@@ -242,35 +242,27 @@ def calculate_new_text_position(
 
 def get_smart_alignment(text: str, old_text: str, line_text: str, bbox: tuple, page_width: float, all_text_items: list) -> dict:
     """
-    LIGHTWEIGHT TEXT ALIGNMENT using the new strategy.
+    DEBUGGING: Force all text to preserve original position - NO CENTERING
     """
     x0, y0, x1, y1 = bbox
     font_size = y1 - y0  # Approximate font size from bbox height
     
-    print(f"🎯 LIGHTWEIGHT ALIGNMENT:")
+    print(f"🎯 FORCE PRESERVE ORIGINAL POSITION:")
     print(f"   Text: '{text}' (was: '{old_text}')")
-    print(f"   Line: '{line_text}'")
     print(f"   Original bbox: {bbox}")
-    print(f"   Page width: {page_width}")
     
-    # 1. Determine text context using the new strategy
-    context = determine_text_context(text, line_text, bbox, page_width)
-    print(f"   Detected context: {context}")
+    # FORCE: Always preserve left edge, extend right
+    original_width = x1 - x0
+    char_width_ratio = len(text) / len(old_text) if len(old_text) > 0 else 1.0
+    new_width = original_width * char_width_ratio
     
-    # 2. Calculate new position based on context
-    new_bbox = calculate_new_text_position(
-        original_bbox=bbox,
-        new_text=text,
-        original_text_context=context,
-        font_size=font_size,
-        page_width=page_width
-    )
+    new_bbox = [x0, y0, x0 + new_width, y1]
     
-    print(f"   New bbox: {new_bbox}")
+    print(f"   Forced left preservation: {new_bbox}")
     
     return {
-        'strategy': f'lightweight_{context}',
-        'reasoning': f'Lightweight alignment: {context} positioning for "{text}"',
+        'strategy': 'force_left_preserve',
+        'reasoning': f'DEBUGGING: Forcing left edge preservation for "{text}"',
         'new_bbox': new_bbox
     }
 
