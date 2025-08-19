@@ -97,128 +97,140 @@ def extract_pymupdf_metadata(pdf_content: bytes, page_num: int = None) -> Dict[s
     doc.close()
     return metadata
 
+def determine_text_context(text: str, line_text: str, bbox: tuple, page_width: float) -> str:
+    """
+    Determines the context of a text element using PyMuPDF data.
+    Based on lightweight alignment strategy.
+    """
+    # --- RULE 1: Detect List Items ---
+    list_patterns = [
+        r'^\s*\d+[\.\)]\s',         # e.g., "1. ", "2) "
+        r'^\s*[•\-\*\+]\s',         # e.g., "• ", "- ", "* ", "+ "
+        r'^\s*[A-Za-z][\.\)]\s',    # e.g., "A. ", "b) "
+        r'^\s*\([A-Za-z0-9]\)\s'    # e.g., "(1) ", "(A) "
+    ]
+
+    for pattern in list_patterns:
+        if re.match(pattern, line_text.strip()) or re.match(pattern, text.strip()):
+            return 'list_item'
+
+    # --- RULE 2: Detect Centered Text ---
+    text_width = bbox[2] - bbox[0]
+    text_center_x = (bbox[0] + bbox[2]) / 2
+    page_center_x = page_width / 2
+    distance_from_page_center = abs(text_center_x - page_center_x)
+
+    # Thresholds (tune based on typical documents)
+    center_threshold = 50  # Points
+    # Assume centered text spans a significant portion of the page
+    width_threshold = page_width * 0.3
+
+    # If text is near page center and wide, likely centered
+    if distance_from_page_center < center_threshold and text_width > width_threshold:
+        return 'centered'
+
+    # --- RULE 3: Detect Right-Aligned Text ---
+    right_margin = page_width - bbox[2]
+    right_alignment_threshold = 50 # Points
+
+    if right_margin < right_alignment_threshold:
+        return 'right_aligned'
+
+    # --- RULE 4: Default ---
+    return 'left_aligned'
+
+
+def estimate_text_width_simple(text: str, font_size: float) -> float:
+    """
+    Simple heuristic for text width using PyMuPDF-extracted font size.
+    """
+    # This factor is approximate and depends on the actual font.
+    # 0.6 is a common average for many sans-serif fonts like Helvetica.
+    average_char_width_factor = 0.6
+    estimated_width = len(text) * font_size * average_char_width_factor
+    return estimated_width
+
+
+def calculate_new_text_position(
+    original_bbox: tuple,
+    new_text: str,
+    original_text_context: str,
+    font_size: float,
+    page_width: float
+) -> tuple:
+    """
+    Calculates the new bounding box for edited text based on its context.
+    Based on lightweight alignment strategy.
+    """
+    orig_x0, orig_y0, orig_x1, orig_y1 = original_bbox
+    new_text_width = estimate_text_width_simple(new_text, font_size)
+
+    # Maintain original vertical position
+    new_y0 = orig_y0
+    new_y1 = orig_y1
+
+    # --- Apply Context-Specific Logic ---
+    if original_text_context == 'list_item':
+        # Keep left edge fixed, adjust right edge
+        new_x0 = orig_x0
+        new_x1 = new_x0 + new_text_width
+
+    elif original_text_context == 'centered':
+        # Recalculate to keep the center point the same
+        original_center_x = (orig_x0 + orig_x1) / 2
+        new_x0 = original_center_x - (new_text_width / 2)
+        new_x1 = new_x0 + new_text_width
+
+    elif original_text_context == 'right_aligned':
+        # Keep right edge fixed, adjust left edge
+        new_x1 = orig_x1
+        new_x0 = new_x1 - new_text_width
+        # Prevent negative coordinates
+        if new_x0 < 0:
+            new_x0 = 0
+            new_x1 = new_text_width
+
+    else: # Default: 'left_aligned'
+        # Keep left edge fixed (same as list_item logic here)
+        new_x0 = orig_x0
+        new_x1 = new_x0 + new_text_width
+
+    return (new_x0, new_y0, new_x1, new_y1)
+
+
 def get_smart_alignment(text: str, old_text: str, line_text: str, bbox: tuple, page_width: float, all_text_items: list) -> dict:
     """
-    INTELLIGENT TEXT ALIGNMENT using PyMuPDF-only analysis
+    LIGHTWEIGHT TEXT ALIGNMENT using the new strategy.
     """
     x0, y0, x1, y1 = bbox
-    text_width = x1 - x0
-    text_height = y1 - y0
+    font_size = y1 - y0  # Approximate font size from bbox height
     
-    # Page layout analysis
-    page_center_x = page_width / 2
-    text_center_x = (x0 + x1) / 2
+    print(f"🎯 LIGHTWEIGHT ALIGNMENT:")
+    print(f"   Text: '{text}' (was: '{old_text}')")
+    print(f"   Line: '{line_text}'")
+    print(f"   Original bbox: {bbox}")
+    print(f"   Page width: {page_width}")
     
-    # STATION NAME DETECTION - Enhanced patterns
-    station_patterns = [
-        r'^[A-Z\s]+\s*\([A-Z]{2,4}\)$',  # "NEW DELHI (NDLS)"
-        r'^[A-Z]{2,4}\s*\([A-Z]{2,4}\)$',  # "NDLS (NDLS)"
-        r'^\w+\s*\([\w\s]+\)$'  # General pattern with parentheses
-    ]
+    # 1. Determine text context using the new strategy
+    context = determine_text_context(text, line_text, bbox, page_width)
+    print(f"   Detected context: {context}")
     
-    is_station = False
-    text_upper = text.upper()
+    # 2. Calculate new position based on context
+    new_bbox = calculate_new_text_position(
+        original_bbox=bbox,
+        new_text=text,
+        original_text_context=context,
+        font_size=font_size,
+        page_width=page_width
+    )
     
-    print(f"🚉 STATION DETECTION DEBUG:")
-    print(f"   Text: '{text}' -> Upper: '{text_upper}'")
-    print(f"   Testing patterns:")
+    print(f"   New bbox: {new_bbox}")
     
-    for i, pattern in enumerate(station_patterns, 1):
-        match = re.match(pattern, text_upper)
-        print(f"   Pattern {i}: {pattern} -> {'✅ MATCH' if match else '❌ No match'}")
-        if match:
-            is_station = True
-            break
-    
-    print(f"   Is Station: {is_station}")
-    
-    # INTELLIGENT ALIGNMENT STRATEGY
-    if is_station:
-        # For station names, respect the original positioning context rather than forcing center
-        text_center_x = (x0 + x1) / 2
-        original_width = x1 - x0
-        
-        # Better width estimation using character width ratio
-        char_width_ratio = len(text) / len(old_text) if len(old_text) > 0 else 1.0
-        new_width = original_width * char_width_ratio
-        
-        # Calculate width difference to adjust position proportionally
-        width_diff = new_width - original_width
-        
-        # If originally centered, keep centered; if left-aligned, keep left-aligned
-        if abs(text_center_x - page_center_x) < (page_width * 0.15):
-            # Was centered - maintain center alignment
-            new_x0 = text_center_x - (new_width / 2)
-            new_x1 = text_center_x + (new_width / 2)
-            strategy = 'station_maintain_center'
-            reasoning = f'Station "{text}" - maintaining original center position'
-        else:
-            # Was not centered - maintain left position and expand right
-            new_x0 = x0
-            new_x1 = x0 + new_width
-            strategy = 'station_expand_right'
-            reasoning = f'Station "{text}" - maintaining original left position, expanding right'
-        
-        return {
-            'strategy': strategy,
-            'reasoning': reasoning,
-            'new_bbox': [new_x0, y0, new_x1, y1]
-        }
-    
-    # Check positioning context
-    is_center_positioned = abs(text_center_x - page_center_x) < (page_width * 0.15)
-    is_left_positioned = x0 < (page_width / 3)
-    is_right_positioned = x0 > (page_width * 2/3)
-    
-    if is_center_positioned:
-        # Keep center alignment but adjust for new text width using character ratio
-        char_width_ratio = len(text) / len(old_text) if len(old_text) > 0 else 1.0
-        original_width = x1 - x0
-        new_width = original_width * char_width_ratio
-        new_x0 = text_center_x - (new_width / 2)
-        new_x1 = text_center_x + (new_width / 2)
-        
-        return {
-            'strategy': 'maintain_center',
-            'reasoning': f'Center positioned (x: {text_center_x:.1f}, center: {page_center_x:.1f}) - maintaining center',
-            'new_bbox': [new_x0, y0, new_x1, y1]
-        }
-    
-    elif is_left_positioned:
-        # Expand to the right from left position using character ratio
-        char_width_ratio = len(text) / len(old_text) if len(old_text) > 0 else 1.0
-        original_width = x1 - x0
-        new_width = original_width * char_width_ratio
-        
-        return {
-            'strategy': 'expand_right',
-            'reasoning': f'Left positioned (x: {x0:.1f}) - expanding right',
-            'new_bbox': [x0, y0, x0 + new_width, y1]
-        }
-    
-    elif is_right_positioned:
-        # Expand to the left from right position using character ratio
-        char_width_ratio = len(text) / len(old_text) if len(old_text) > 0 else 1.0
-        original_width = x1 - x0
-        new_width = original_width * char_width_ratio
-        
-        return {
-            'strategy': 'expand_left',
-            'reasoning': f'Right positioned (x: {x0:.1f}) - expanding left',
-            'new_bbox': [x0 - new_width, y0, x0, y1]
-        }
-    
-    else:
-        # Default: expand right from current position using character ratio
-        char_width_ratio = len(text) / len(old_text) if len(old_text) > 0 else 1.0
-        original_width = x1 - x0
-        new_width = original_width * char_width_ratio
-        
-        return {
-            'strategy': 'expand_right',
-            'reasoning': f'Left positioned (x: {x0:.1f}) - expanding right',
-            'new_bbox': [x0, y0, x0 + new_width, y1]
-        }
+    return {
+        'strategy': f'lightweight_{context}',
+        'reasoning': f'Lightweight alignment: {context} positioning for "{text}"',
+        'new_bbox': new_bbox
+    }
 
 fastapi_app = FastAPI(title="PDF Editor Backend - Advanced")
 
@@ -575,17 +587,38 @@ async def edit_text(file_id: str, edit_request: EditRequest):
             print(f"   Header: {text_context['is_header']}")
             print(f"   Justified: {text_context['is_justified']}")
             
-            # USE NEW SMART ALIGNMENT SYSTEM
-            # Get all text items for context (simplified for now)
-            all_text_items = [{'x': original_bbox[0], 'y': original_bbox[1], 'text': original_text}]
+            # USE NEW LIGHTWEIGHT ALIGNMENT SYSTEM
+            # Get actual line text context from the page for better analysis
+            try:
+                page_metadata = extract_pymupdf_metadata(pdf_content, page_num=edit_request.page - 1)
+                line_text = original_text  # Default fallback
+                
+                # Try to find the line context by looking for nearby text items
+                target_y = original_bbox[1]
+                line_tolerance = 5  # Points tolerance for same line
+                
+                line_items = []
+                for key, item_meta in page_metadata.items():
+                    if abs(item_meta.get('bbox', [0, 0, 0, 0])[1] - target_y) < line_tolerance:
+                        line_items.append(item_meta.get('text', ''))
+                
+                if line_items:
+                    line_text = ' '.join(line_items).strip()
+                    print(f"🔍 FOUND LINE CONTEXT: '{line_text}'")
+                else:
+                    print(f"🔍 NO LINE CONTEXT FOUND, using original text")
+                    
+            except Exception as e:
+                print(f"⚠️ Line context extraction failed: {e}")
+                line_text = original_text
             
             smart_alignment = get_smart_alignment(
                 text=new_text,
                 old_text=original_text, 
-                line_text=original_text,  # Using original text as line text for now
+                line_text=line_text,
                 bbox=original_bbox,
                 page_width=page_width,
-                all_text_items=all_text_items
+                all_text_items=[]  # Not needed for new lightweight approach
             )
             
             print(f"🎯 SMART ALIGNMENT STRATEGY: {smart_alignment['strategy']}")
