@@ -115,18 +115,14 @@ def determine_text_context(text: str, line_text: str, bbox: tuple, page_width: f
             return 'list_item'
 
     # --- RULE 2: Detect Centered Text ---
-    text_width = bbox[2] - bbox[0]
+    # DISABLED: We preserve relative position, no automatic centering
+    # Only return 'centered' if text is EXACTLY at page center (almost never)
     text_center_x = (bbox[0] + bbox[2]) / 2
     page_center_x = page_width / 2
     distance_from_page_center = abs(text_center_x - page_center_x)
 
-    # Thresholds (tune based on typical documents)
-    center_threshold = 50  # Points
-    # Assume centered text spans a significant portion of the page
-    width_threshold = page_width * 0.3
-
-    # If text is near page center and wide, likely centered
-    if distance_from_page_center < center_threshold and text_width > width_threshold:
+    # EXTREMELY STRICT - only if within 2 points of exact center
+    if distance_from_page_center < 2:
         return 'centered'
 
     # --- RULE 3: Detect Right-Aligned Text ---
@@ -160,7 +156,7 @@ def calculate_new_text_position(
 ) -> tuple:
     """
     Calculates the new bounding box for edited text based on its context.
-    Based on lightweight alignment strategy.
+    DEFAULT: Keep original left position (preserve layout).
     """
     orig_x0, orig_y0, orig_x1, orig_y1 = original_bbox
     new_text_width = estimate_text_width_simple(new_text, font_size)
@@ -170,17 +166,12 @@ def calculate_new_text_position(
     new_y1 = orig_y1
 
     # --- Apply Context-Specific Logic ---
-    if original_text_context == 'list_item':
-        # Keep left edge fixed, adjust right edge
-        new_x0 = orig_x0
-        new_x1 = new_x0 + new_text_width
-
-    elif original_text_context == 'centered':
-        # Recalculate to keep the center point the same
+    # DEFAULT BEHAVIOR: Keep left edge fixed for ALL cases except truly centered headers
+    if original_text_context == 'centered':
+        # ONLY for truly centered text (wide headers spanning most of page)
         original_center_x = (orig_x0 + orig_x1) / 2
         new_x0 = original_center_x - (new_text_width / 2)
         new_x1 = new_x0 + new_text_width
-
     elif original_text_context == 'right_aligned':
         # Keep right edge fixed, adjust left edge
         new_x1 = orig_x1
@@ -189,9 +180,9 @@ def calculate_new_text_position(
         if new_x0 < 0:
             new_x0 = 0
             new_x1 = new_text_width
-
-    else: # Default: 'left_aligned'
-        # Keep left edge fixed (same as list_item logic here)
+    else:
+        # DEFAULT for ALL other cases (list_item, left_aligned, etc.)
+        # Keep left edge fixed, adjust right edge - PRESERVE ORIGINAL POSITION
         new_x0 = orig_x0
         new_x1 = new_x0 + new_text_width
 
