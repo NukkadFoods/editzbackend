@@ -134,14 +134,34 @@ def get_smart_alignment(text: str, old_text: str, line_text: str, bbox: tuple, p
     
     # INTELLIGENT ALIGNMENT STRATEGY
     if is_station:
-        # Station names should be centered 
-        new_width = len(text) * (text_height * 0.6)  # Estimate width
-        new_x0 = page_center_x - (new_width / 2)
-        new_x1 = page_center_x + (new_width / 2)
+        # For station names, respect the original positioning context rather than forcing center
+        text_center_x = (x0 + x1) / 2
+        original_width = x1 - x0
+        
+        # Better width estimation using character width ratio
+        char_width_ratio = len(text) / len(old_text) if len(old_text) > 0 else 1.0
+        new_width = original_width * char_width_ratio
+        
+        # Calculate width difference to adjust position proportionally
+        width_diff = new_width - original_width
+        
+        # If originally centered, keep centered; if left-aligned, keep left-aligned
+        if abs(text_center_x - page_center_x) < (page_width * 0.15):
+            # Was centered - maintain center alignment
+            new_x0 = text_center_x - (new_width / 2)
+            new_x1 = text_center_x + (new_width / 2)
+            strategy = 'station_maintain_center'
+            reasoning = f'Station "{text}" - maintaining original center position'
+        else:
+            # Was not centered - maintain left position and expand right
+            new_x0 = x0
+            new_x1 = x0 + new_width
+            strategy = 'station_expand_right'
+            reasoning = f'Station "{text}" - maintaining original left position, expanding right'
         
         return {
-            'strategy': 'center_station',
-            'reasoning': f'Station name detected: "{text}" - maintaining center position',
+            'strategy': strategy,
+            'reasoning': reasoning,
             'new_bbox': [new_x0, y0, new_x1, y1]
         }
     
@@ -151,10 +171,12 @@ def get_smart_alignment(text: str, old_text: str, line_text: str, bbox: tuple, p
     is_right_positioned = x0 > (page_width * 2/3)
     
     if is_center_positioned:
-        # Keep center alignment but adjust for new text width
-        new_width = len(text) * (text_height * 0.6)
-        new_x0 = page_center_x - (new_width / 2)
-        new_x1 = page_center_x + (new_width / 2)
+        # Keep center alignment but adjust for new text width using character ratio
+        char_width_ratio = len(text) / len(old_text) if len(old_text) > 0 else 1.0
+        original_width = x1 - x0
+        new_width = original_width * char_width_ratio
+        new_x0 = text_center_x - (new_width / 2)
+        new_x1 = text_center_x + (new_width / 2)
         
         return {
             'strategy': 'maintain_center',
@@ -163,8 +185,10 @@ def get_smart_alignment(text: str, old_text: str, line_text: str, bbox: tuple, p
         }
     
     elif is_left_positioned:
-        # Expand to the right from left position
-        new_width = len(text) * (text_height * 0.6)
+        # Expand to the right from left position using character ratio
+        char_width_ratio = len(text) / len(old_text) if len(old_text) > 0 else 1.0
+        original_width = x1 - x0
+        new_width = original_width * char_width_ratio
         
         return {
             'strategy': 'expand_right',
@@ -173,8 +197,10 @@ def get_smart_alignment(text: str, old_text: str, line_text: str, bbox: tuple, p
         }
     
     elif is_right_positioned:
-        # Expand to the left from right position  
-        new_width = len(text) * (text_height * 0.6)
+        # Expand to the left from right position using character ratio
+        char_width_ratio = len(text) / len(old_text) if len(old_text) > 0 else 1.0
+        original_width = x1 - x0
+        new_width = original_width * char_width_ratio
         
         return {
             'strategy': 'expand_left',
@@ -183,8 +209,10 @@ def get_smart_alignment(text: str, old_text: str, line_text: str, bbox: tuple, p
         }
     
     else:
-        # Default: expand right from current position
-        new_width = len(text) * (text_height * 0.6)
+        # Default: expand right from current position using character ratio
+        char_width_ratio = len(text) / len(old_text) if len(old_text) > 0 else 1.0
+        original_width = x1 - x0
+        new_width = original_width * char_width_ratio
         
         return {
             'strategy': 'expand_right',

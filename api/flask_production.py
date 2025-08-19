@@ -238,6 +238,14 @@ frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
 print(f"🌐 Configured CORS for frontend: {frontend_url}")
 CORS(app, origins="*", methods=["*"], allow_headers=["*"])
 
+@app.after_request
+def after_request(response):
+    """Ensure all responses have proper CORS headers"""
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
+    return response
+
 @app.route('/', methods=['GET', 'OPTIONS'])
 def root():
     if request.method == 'OPTIONS':
@@ -476,7 +484,11 @@ def edit_text(file_id):
     ADVANCED text editing with intelligent positioning and enhanced boldness
     """
     if request.method == 'OPTIONS':
-        return '', 200
+        response = Response()
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response, 200
         
     try:
         print(f"🚀 ADVANCED EDITING: Starting text edit for file_id: {file_id}")
@@ -714,6 +726,9 @@ def download_pdf(file_id):
             headers={
                 "Content-Disposition": f"attachment; filename=edited_{file_id}.pdf",
                 "Content-Length": str(len(pdf_bytes)),
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
                 "Access-Control-Expose-Headers": "Content-Disposition, Content-Length"
             }
         )
