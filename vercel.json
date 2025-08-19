@@ -2,14 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/wsgi_handler.py",
+      "src": "api/flask_production.py",
       "use": "@vercel/python@4.8.0"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/api/wsgi_handler.py"
+      "dest": "/api/flask_production.py"
     }
   ]
 }
