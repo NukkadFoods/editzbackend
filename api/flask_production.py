@@ -453,13 +453,17 @@ def upload_pdf():
         
         print(f"✅ ADVANCED PDF processing complete: {len(text_items)} text items, {len(embedded_fonts)} embedded fonts")
         
+        # Encode PDF data for stateless frontend operations
+        pdf_data_base64 = base64.b64encode(file_content).decode('utf-8')
+        
         return jsonify({
             "file_id": file_id,
             "text_items": text_items,
             "text_metadata": text_metadata,
             "embedded_fonts": embedded_fonts,
             "total_items": len(text_items),
-            "processing_method": "enhanced" if len(all_metadata) > 0 else "fallback"
+            "processing_method": "enhanced" if len(all_metadata) > 0 else "fallback",
+            "pdf_data": pdf_data_base64  # Include base64 PDF for stateless frontend
         })
         
     except Exception as e:
