@@ -192,7 +192,7 @@ def get_smart_alignment(text: str, old_text: str, line_text: str, bbox: tuple, p
             'new_bbox': [x0, y0, x0 + new_width, y1]
         }
 
-app = FastAPI(title="PDF Editor Backend - Advanced")
+fastapi_app = FastAPI(title="PDF Editor Backend - Advanced")
 
 # Get the frontend URL from environment variable (for Vercel)
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
@@ -200,7 +200,7 @@ frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
 # Add CORS middleware - simplified for reliability
 print(f"🌐 Configured CORS for frontend: {frontend_url}")
 
-app.add_middleware(
+fastapi_app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allow all origins
     allow_credentials=False,
@@ -209,7 +209,7 @@ app.add_middleware(
 )
 
 # Simple OPTIONS handler for CORS
-@app.options("/{full_path:path}")
+@fastapi_app.options("/{full_path:path}")
 async def preflight_handler():
     return Response(status_code=200)
 
@@ -223,7 +223,7 @@ class EditRequest(BaseModel):
 class DownloadRequest(BaseModel):
     pdf_data: str  # Base64 encoded PDF data
 
-@app.get("/")
+@fastapi_app.get("/")
 async def root():
     return {
         "message": "🚀 ADVANCED PDF Editor Backend with Intelligent Alignment & Enhanced Text Quality",
@@ -243,7 +243,7 @@ async def root():
         "size": "📦 <50MB PyMuPDF-Only"
     }
 
-@app.post("/upload-pdf")
+@fastapi_app.post("/upload-pdf")
 async def upload_pdf(file: UploadFile = File(...)):
     """
     Enhanced PDF upload with comprehensive metadata extraction
@@ -472,7 +472,7 @@ def map_to_pymupdf_font(font_name: str, is_bold: bool = False, is_italic: bool =
         else:
             return "helv"  # Helvetica
 
-@app.post("/pdf/{file_id}/edit")
+@fastapi_app.post("/pdf/{file_id}/edit")
 async def edit_text(file_id: str, edit_request: EditRequest):
     """
     ADVANCED text editing with intelligent positioning and enhanced boldness
@@ -678,7 +678,7 @@ async def edit_text(file_id: str, edit_request: EditRequest):
         print(f"❌ ADVANCED EDIT ERROR: {e}")
         raise HTTPException(status_code=500, detail=f"Text editing failed: {str(e)}")
 
-@app.post("/pdf/{file_id}/download")
+@fastapi_app.post("/pdf/{file_id}/download")
 async def download_pdf(file_id: str, download_request: DownloadRequest):
     """
     Download the edited PDF
@@ -707,7 +707,7 @@ async def download_pdf(file_id: str, download_request: DownloadRequest):
         raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
 
 # Health check endpoint
-@app.get("/health")
+@fastapi_app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": "2025-08-18", "version": "3.2.0"}
 

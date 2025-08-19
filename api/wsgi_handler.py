@@ -1,10 +1,7 @@
 """
-Simple WSGI handler for Vercel compatibility
-This bypasses the ASGI detection issue
+WSGI-compatible handler for Vercel deployment
+Converts FastAPI (ASGI) to WSGI for Vercel compatibility
 """
-import json
-import base64
-from urllib.parse import parse_qs, urlparse
 import os
 import sys
 
@@ -12,24 +9,13 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 # Import our FastAPI app
-from index import app
+from index import fastapi_app
 from mangum import Mangum
 
-# Create Mangum handler
-mangum_handler = Mangum(app)
+# Create WSGI-compatible handler using Mangum
+# This is what Vercel expects - a WSGI application object
+application = Mangum(fastapi_app)
 
-def handler(event, context):
-    """
-    Simple handler function that Vercel expects
-    """
-    try:
-        return mangum_handler(event, context)
-    except Exception as e:
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": f"Handler error: {str(e)}"}),
-            "headers": {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": "*"
-            }
-        }
+# Alternative names that Vercel might look for
+app = application  # Vercel often looks for 'app'
+handler = application  # Some configurations look for 'handler'
