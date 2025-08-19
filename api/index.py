@@ -18,7 +18,28 @@ def extract_pymupdf_metadata(pdf_content: bytes, page_num: int = None) -> Dict[s
     doc = fitz.open(stream=pdf_content, filetype="pdf")
     metadata = {}
     
-    # Process specific page or all pages
+    # Proce        # Use the intelligently calculated position for new text with baseline adjustment
+        # COORDINATE SYSTEM FIX: bbox gives TOP-LEFT coordinates, insert_text needs BASELINE
+        original_text_x = original_bbox[0]  # Left edge (correct)
+        original_text_top = original_bbox[1]  # Top of text box
+        original_text_bottom = original_bbox[3]  # Bottom of text box
+        
+        # PyMuPDF insert_text needs BASELINE Y coordinate, not top
+        # Baseline is typically ~80% down from top to bottom
+        text_height = original_text_bottom - original_text_top
+        baseline_y = original_text_top + (text_height * 0.8)
+        
+        text_point = fitz.Point(original_text_x, baseline_y)
+        
+        print(f"📍 BASELINE COORDINATE CORRECTION:")
+        print(f"   Original bbox: {original_bbox}")
+        print(f"   Left X: {original_text_x}")
+        print(f"   Top Y: {original_text_top}")
+        print(f"   Bottom Y: {original_text_bottom}")
+        print(f"   Text height: {text_height:.1f}")
+        print(f"   Baseline Y: {baseline_y:.1f} (80% down from top)")
+        print(f"   Text point: ({text_point.x:.2f}, {text_point.y:.2f})")
+        print(f"   Strategy: {positioning_strategy}")age or all pages
     pages_to_process = [page_num] if page_num is not None else range(len(doc))
     
     for page_idx in pages_to_process:
@@ -638,17 +659,17 @@ async def edit_text(file_id: str, edit_request: EditRequest):
         pymupdf_page.draw_rect(original_text_rect, color=None, fill=fitz.utils.getColor("white"))
         
         # Use the intelligently calculated position for new text with baseline adjustment
-        # FORCE USE EXACT ORIGINAL COORDINATES - NO PROCESSING
-        original_text_x = original_bbox[0]  # Exact original X 
-        original_text_y = original_bbox[1]  # Exact original Y (top)
-        text_point = fitz.Point(original_text_x, original_text_y)
+        # TEST: Place at absolute top-left corner to verify coordinate system
+        test_x = 0  # Absolute left edge
+        test_y = 50  # 50 points from top (to avoid being cut off)
+        text_point = fitz.Point(test_x, test_y)
         
-        print(f"📍 FORCED ORIGINAL COORDINATES:")
+        print(f"📍 ABSOLUTE TOP-LEFT TEST:")
         print(f"   Original bbox: {original_bbox}")
-        print(f"   Forced X: {original_text_x} (original_bbox[0])")
-        print(f"   Forced Y: {original_text_y} (original_bbox[1])")
+        print(f"   Test X: {test_x} (absolute left)")
+        print(f"   Test Y: {test_y} (50pt from top)")
         print(f"   Text point: ({text_point.x:.2f}, {text_point.y:.2f})")
-        print(f"   NO BASELINE ADJUSTMENT!")
+        print(f"   If this STILL centers, coordinate system is wrong!")
         print(f"   Strategy: {positioning_strategy}")
         print(f"   Spacing: char={char_spacing:.1f}, word={word_spacing:.1f}")
         
