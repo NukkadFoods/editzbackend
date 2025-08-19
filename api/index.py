@@ -100,9 +100,9 @@ def extract_pymupdf_metadata(pdf_content: bytes, page_num: int = None) -> Dict[s
 def determine_text_context(text: str, line_text: str, bbox: tuple, page_width: float) -> str:
     """
     Determines the context of a text element using PyMuPDF data.
-    Based on lightweight alignment strategy.
+    Smart detection for relative positioning.
     """
-    # --- RULE 1: Detect List Items ---
+    # --- RULE 1: Detect List Items / Table Format ---
     list_patterns = [
         r'^\s*\d+[\.\)]\s',         # e.g., "1. ", "2) "
         r'^\s*[•\-\*\+]\s',         # e.g., "• ", "- ", "* ", "+ "
@@ -113,26 +113,44 @@ def determine_text_context(text: str, line_text: str, bbox: tuple, page_width: f
     for pattern in list_patterns:
         if re.match(pattern, line_text.strip()) or re.match(pattern, text.strip()):
             return 'list_item'
-
-    # --- RULE 2: Detect Centered Text ---
-    # DISABLED: We preserve relative position, no automatic centering
-    # Only return 'centered' if text is EXACTLY at page center (almost never)
-    text_center_x = (bbox[0] + bbox[2]) / 2
-    page_center_x = page_width / 2
-    distance_from_page_center = abs(text_center_x - page_center_x)
-
-    # EXTREMELY STRICT - only if within 2 points of exact center
-    if distance_from_page_center < 2:
-        return 'centered'
-
+    
+    # --- RULE 2: Detect if text appears to be in a structured format (table-like) ---
+    # Check if line contains multiple structured elements (like table cells)
+    structured_indicators = [
+        ':',  # "Name: AJAY TIWARI"
+        '|',  # Table separators
+        '\t', # Tab separations
+    ]
+    
+    # Count structured elements in the line
+    structure_count = sum(1 for indicator in structured_indicators if indicator in line_text)
+    
+    # If line has multiple colons or separators, treat as structured (left-align)
+    if structure_count >= 2:
+        return 'structured_left'
+    
     # --- RULE 3: Detect Right-Aligned Text ---
     right_margin = page_width - bbox[2]
-    right_alignment_threshold = 50 # Points
-
-    if right_margin < right_alignment_threshold:
+    if right_margin < 50:  # Within 50 points of right edge
         return 'right_aligned'
-
-    # --- RULE 4: Default ---
+    
+    # --- RULE 4: Detect Isolated Text (should center relative to original position) ---
+    # If text appears to be standalone/isolated (not part of structured content)
+    text_width = bbox[2] - bbox[0]
+    
+    # Check if this looks like an isolated element:
+    # - Single short word/phrase
+    # - Not part of a longer sentence
+    # - Appears to be a label or header element
+    
+    is_short = len(text.strip()) <= 20  # Short text
+    is_isolated = len(line_text.strip()) == len(text.strip())  # Text is the whole line
+    is_label_like = bool(re.match(r'^[A-Z0-9\s\(\)]+$', text.strip()))  # All caps/numbers
+    
+    if (is_short and is_isolated) or is_label_like:
+        return 'isolated_center'
+    
+    # --- RULE 5: Default ---
     return 'left_aligned'
 
 
@@ -156,7 +174,7 @@ def calculate_new_text_position(
 ) -> tuple:
     """
     Calculates the new bounding box for edited text based on its context.
-    DEFAULT: Keep original left position (preserve layout).
+    Smart relative positioning.
     """
     orig_x0, orig_y0, orig_x1, orig_y1 = original_bbox
     new_text_width = estimate_text_width_simple(new_text, font_size)
@@ -166,12 +184,17 @@ def calculate_new_text_position(
     new_y1 = orig_y1
 
     # --- Apply Context-Specific Logic ---
-    # DEFAULT BEHAVIOR: Keep left edge fixed for ALL cases except truly centered headers
-    if original_text_context == 'centered':
-        # ONLY for truly centered text (wide headers spanning most of page)
+    if original_text_context == 'list_item' or original_text_context == 'structured_left':
+        # Keep left edge fixed, adjust right edge (normal writing behavior)
+        new_x0 = orig_x0
+        new_x1 = new_x0 + new_text_width
+
+    elif original_text_context == 'isolated_center':
+        # Center relative to ORIGINAL center position, NOT PDF center
         original_center_x = (orig_x0 + orig_x1) / 2
         new_x0 = original_center_x - (new_text_width / 2)
         new_x1 = new_x0 + new_text_width
+
     elif original_text_context == 'right_aligned':
         # Keep right edge fixed, adjust left edge
         new_x1 = orig_x1
@@ -180,9 +203,9 @@ def calculate_new_text_position(
         if new_x0 < 0:
             new_x0 = 0
             new_x1 = new_text_width
-    else:
-        # DEFAULT for ALL other cases (list_item, left_aligned, etc.)
-        # Keep left edge fixed, adjust right edge - PRESERVE ORIGINAL POSITION
+
+    else: # Default: 'left_aligned'
+        # Keep left edge fixed (same as list_item logic here)
         new_x0 = orig_x0
         new_x1 = new_x0 + new_text_width
 
