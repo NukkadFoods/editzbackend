@@ -2,14 +2,14 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/serverless.py",
-      "use": "@vercel/python@4.8.0"
+      "src": "api/wsgi_handler.py",
+      "use": "@vercel/python@3.1.60"
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "api/serverless.py"
+      "dest": "/api/wsgi_handler.py"
     }
   ]
 }
