@@ -594,86 +594,15 @@ async def edit_text(file_id: str, edit_request: EditRequest):
         pymupdf_doc = fitz.open(stream=pdf_content, filetype="pdf")
         pymupdf_page = pymupdf_doc[edit_request.page - 1]  # Convert to 0-based index
         
-        # 🧠 INTELLIGENT POSITIONING: Simple context analysis using PyMuPDF
-        print(f"🧠 ANALYZING TEXT CONTEXT...")
-        try:
-            # Get page width first
-            page_width = pymupdf_page.rect.width
-            
-            # Get page context for intelligent positioning
-            page_metadata = extract_pymupdf_metadata(pdf_content, page_num=edit_request.page - 1)
-            all_text_items = list(page_metadata.values())
-            
-            # Simple context analysis
-            text_context = {
-                'alignment': 'center' if abs((original_bbox[0] + original_bbox[2])/2 - page_width/2) < page_width * 0.15 else 'left',
-                'is_near_center': abs((original_bbox[0] + original_bbox[2])/2 - page_width/2) < page_width * 0.15,
-                'is_list_item': False,  # Added missing variable
-                'is_header': False,     # Added missing variable  
-                'is_justified': False,  # Added missing variable
-                'spacing_analysis': {'has_adequate_space': True},
-                'context_items': len(all_text_items)
-            }
-            
-            print(f"📊 CONTEXT ANALYSIS:")
-            print(f"   Alignment: {text_context['alignment']}")
-            print(f"   List Item: {text_context['is_list_item']}")
-            print(f"   Header: {text_context['is_header']}")
-            print(f"   Justified: {text_context['is_justified']}")
-            
-            # USE NEW LIGHTWEIGHT ALIGNMENT SYSTEM
-            # Get actual line text context from the page for better analysis
-            try:
-                page_metadata = extract_pymupdf_metadata(pdf_content, page_num=edit_request.page - 1)
-                line_text = original_text  # Default fallback
-                
-                # Try to find the line context by looking for nearby text items
-                target_y = original_bbox[1]
-                line_tolerance = 5  # Points tolerance for same line
-                
-                line_items = []
-                for key, item_meta in page_metadata.items():
-                    if abs(item_meta.get('bbox', [0, 0, 0, 0])[1] - target_y) < line_tolerance:
-                        line_items.append(item_meta.get('text', ''))
-                
-                if line_items:
-                    line_text = ' '.join(line_items).strip()
-                    print(f"🔍 FOUND LINE CONTEXT: '{line_text}'")
-                else:
-                    print(f"🔍 NO LINE CONTEXT FOUND, using original text")
-                    
-            except Exception as e:
-                print(f"⚠️ Line context extraction failed: {e}")
-                line_text = original_text
-            
-            smart_alignment = get_smart_alignment(
-                text=new_text,
-                old_text=original_text, 
-                line_text=line_text,
-                bbox=original_bbox,
-                page_width=page_width,
-                all_text_items=[]  # Not needed for new lightweight approach
-            )
-            
-            print(f"🎯 SMART ALIGNMENT STRATEGY: {smart_alignment['strategy']}")
-            print(f"📘 REASONING: {smart_alignment['reasoning']}")
-            print(f"📏 New Position: {smart_alignment['new_bbox']}")
-            
-            # Use the smart alignment result
-            new_bbox = smart_alignment['new_bbox']
-            positioning_strategy = smart_alignment['strategy']
-            
-        except Exception as e:
-            print(f"⚠️  Intelligent positioning failed: {e}")
-            print(f"🔄 Falling back to original position")
-            new_bbox = original_bbox
-            positioning_strategy = "fallback"
-            # Initialize smart_alignment for fallback case
-            smart_alignment = {
-                'strategy': 'fallback',
-                'reasoning': 'Error in intelligent positioning',
-                'new_bbox': original_bbox
-            }
+        # BYPASS ALL ALIGNMENT LOGIC - FORCE EXACT ORIGINAL POSITION
+        print(f"🚫 BYPASSING ALL ALIGNMENT - USING EXACT ORIGINAL POSITION")
+        new_bbox = original_bbox  # Use exact original position
+        positioning_strategy = "FORCED_ORIGINAL"
+        
+        print(f"� FORCED POSITIONING:")
+        print(f"   Original bbox: {original_bbox}")
+        print(f"   New bbox: {new_bbox} (SAME AS ORIGINAL)")
+        print(f"   Strategy: {positioning_strategy}")
         
         # Determine effective font weight based on multiple factors
         # High visual boldness score or explicit bold flag should result in bold text
