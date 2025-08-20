@@ -299,25 +299,18 @@ def upload_pdf():
         print("🔍 STARTING ENHANCED METADATA EXTRACTION...")
         
         try:
-            # Extract text metadata from ALL pages
+            # Extract text metadata from ALL pages - OPTIMIZED: Open PDF only once
             all_metadata = []
             
-            # Get total pages
-            doc = fitz.open(stream=file_content, filetype="pdf")
-            total_pages = len(doc)
-            doc.close()
-            
-            print(f"📄 Processing {total_pages} pages...")
-            
-            # Extract metadata from each page
-            for page_idx in range(total_pages):
-                print(f"🔍 Processing page {page_idx + 1}/{total_pages}...")
-                # Use PyMuPDF-only metadata extraction
-                page_metadata = extract_pymupdf_metadata(file_content, page_num=page_idx)
-                if page_metadata:
-                    # page_metadata is a dict, convert to list of metadata items
-                    for key, metadata in page_metadata.items():
-                        all_metadata.append(metadata)
+            print("🔍 OPTIMIZED PROCESSING: Opening PDF once for all pages...")
+            # Use PyMuPDF-only metadata extraction for ALL pages at once
+            page_metadata = extract_pymupdf_metadata(file_content, page_num=None)  # Process all pages
+            if page_metadata:
+                # page_metadata is a dict, convert to list of metadata items
+                for key, metadata in page_metadata.items():
+                    all_metadata.append(metadata)
+                    
+            print(f"📄 Processed all pages in single pass: {len(all_metadata)} text items found")
             
             if not all_metadata:
                 raise Exception("Enhanced extraction returned empty results")
