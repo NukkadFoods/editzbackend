@@ -16,7 +16,7 @@ def extract_pymupdf_metadata(pdf_content: bytes, page_num: int = None) -> Dict[s
     Extract enhanced text metadata using ONLY PyMuPDF - lightweight but powerful
     """
     doc = fitz.open(stream=pdf_content, filetype="pdf")
-    meta        # Open              # Determine effective font weight based on multiple factorsne effective font weight based on multiple factors
+    meta        # Open                    # Determine effective font weight based on multiple factorsne effective font weight based on multiple factorsne effective font weight based on multiple factors
         # High visual boldness score or explicit bold flag should result in bold text
         effective_bold = is_bold or (visual_boldness > 50.0)
         
