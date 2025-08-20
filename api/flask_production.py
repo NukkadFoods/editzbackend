@@ -544,8 +544,9 @@ def edit_text(file_id):
         # 🧠 INTELLIGENT POSITIONING: Simple context analysis using PyMuPDF
         print(f"🧠 ANALYZING TEXT CONTEXT...")
         try:
-            # Get page width first
+            # Get page dimensions first
             page_width = pymupdf_page.rect.width
+            page_height = pymupdf_page.rect.height
             
             # Get page context for intelligent positioning
             page_metadata = extract_pymupdf_metadata(pdf_content, page_num=page - 1)
@@ -634,18 +635,21 @@ def edit_text(file_id):
         # Clear the original text by drawing a white rectangle
         pymupdf_page.draw_rect(original_text_rect, color=None, fill=fitz.utils.getColor("white"))
         
-        # Use the intelligently calculated position for new text with baseline adjustment
-        text_baseline_y = new_bbox[3] - (font_size * 0.2)  # Adjust for font baseline
-        text_point = fitz.Point(new_bbox[0], text_baseline_y)
+        # DEBUGGING: Use EXACT original coordinates to see what happens
+        # If this STILL centers, then PyMuPDF has a different coordinate system
+        original_x = original_bbox[0]  # Exact left edge of original
+        original_y = original_bbox[1]  # Exact top edge of original
         
-        print(f"📍 ENHANCED TEXT PLACEMENT:")
+        text_point = fitz.Point(original_x, original_y)
+        
+        print(f"📍 EXACT ORIGINAL COORDINATES TEST:")
+        print(f"   Page size: {page_width:.1f} x {page_height:.1f}")
         print(f"   Original bbox: {original_bbox}")
-        print(f"   New bbox: {new_bbox}")
+        print(f"   Using EXACT original X: {original_x}")
+        print(f"   Using EXACT original Y: {original_y}")
         print(f"   Text point: ({text_point.x:.2f}, {text_point.y:.2f})")
-        print(f"   Baseline adjusted Y: {text_baseline_y:.2f}")
-        print(f"   Font size: {font_size}")
-        print(f"   Strategy: {positioning_strategy}")
-        print(f"   Spacing: char={char_spacing:.1f}, word={word_spacing:.1f}")
+        print(f"   If this STILL centers, PyMuPDF coordinate system is wrong!")
+        print(f"   Strategy: EXACT_ORIGINAL_COORDINATES")
         
         # Determine render mode based on boldness intensity
         # For very high visual boldness, use stroke rendering for extra boldness
