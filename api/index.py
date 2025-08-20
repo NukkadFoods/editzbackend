@@ -696,35 +696,21 @@ async def edit_text(file_id: str, edit_request: EditRequest):
         # Clear the original text by drawing a white rectangle
         pymupdf_page.draw_rect(original_text_rect, color=None, fill=fitz.utils.getColor("white"))
         
-        # PRESERVE CENTER POSITION: Calculate original element's center point
-        page_width = pymupdf_page.rect.width
-        page_height = pymupdf_page.rect.height
+        # DEBUGGING: Use EXACT original coordinates to see what happens
+        # If this STILL centers, then PyMuPDF has a different coordinate system
+        original_x = original_bbox[0]  # Exact left edge of original
+        original_y = original_bbox[1]  # Exact top edge of original
         
-        # Calculate the CENTER of the original element
-        original_center_x = (original_bbox[0] + original_bbox[2]) / 2  # (left + right) / 2
-        original_center_y = (original_bbox[1] + original_bbox[3]) / 2  # (top + bottom) / 2
+        text_point = fitz.Point(original_x, original_y)
         
-        # Estimate the width of the new text to center it properly
-        estimated_char_width = font_size * 0.6  # Rough estimation for Helvetica
-        estimated_text_width = len(new_text) * estimated_char_width
-        
-        # Calculate where to place the new text so its CENTER aligns with original CENTER
-        new_text_x = original_center_x - (estimated_text_width / 2)  # Move left by half text width
-        new_text_y = original_center_y  # Keep same vertical center (PyMuPDF baseline)
-        
-        text_point = fitz.Point(new_text_x, new_text_y)
-        
-        print(f"📍 CENTER PRESERVATION:")
+        print(f"📍 EXACT ORIGINAL COORDINATES TEST:")
         print(f"   Page size: {page_width:.1f} x {page_height:.1f}")
         print(f"   Original bbox: {original_bbox}")
-        print(f"   Original center: ({original_center_x:.1f}, {original_center_y:.1f})")
-        print(f"   New text: '{new_text}' (length: {len(new_text)})")
-        print(f"   Estimated text width: {estimated_text_width:.1f}")
-        print(f"   New text position: ({new_text_x:.1f}, {new_text_y:.1f})")
+        print(f"   Using EXACT original X: {original_x}")
+        print(f"   Using EXACT original Y: {original_y}")
         print(f"   Text point: ({text_point.x:.2f}, {text_point.y:.2f})")
-        print(f"   Result: New text CENTER should align with original CENTER!")
-        print(f"   Strategy: {positioning_strategy}")
-        print(f"   Spacing: char={char_spacing:.1f}, word={word_spacing:.1f}")
+        print(f"   If this STILL centers, PyMuPDF coordinate system is wrong!")
+        print(f"   Strategy: EXACT_ORIGINAL_COORDINATES")
         
         # Determine render mode based on boldness intensity
         # For very high visual boldness, use stroke rendering for extra boldness
