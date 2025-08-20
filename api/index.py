@@ -17,7 +17,20 @@ def extract_pymupdf_metadata(pdf_content: bytes, page_num: int = None) -> Dict[s
     """
     doc = fitz.open(stream=pdf_content, filetype="pdf")
     meta        # Open               
-        # Open PDF for editing
+              pymupdf_doc = fitz.open(stream=pdf_content, filetype="pdf")
+        pymupdf_page = pymupdf_doc[edit_request.page - 1]  # Convert to 0-based index
+        
+        # CENTER PRESERVATION LOGIC ACTIVE
+        print(f"✅ CENTER PRESERVATION LOGIC ACTIVE")
+        positioning_strategy = "CENTER_PRESERVATION"
+        
+        print(f"🎯 CENTER PRESERVATION:")
+        print(f"   Original bbox: {original_bbox}")
+        print(f"   Strategy: {positioning_strategy}")
+        
+        # Determine effective font weight based on multiple factors
+        # High visual boldness score or explicit bold flag should result in bold text
+        effective_bold = is_bold or (visual_boldness > 50.0) editing
         pymupdf_doc = fitz.open(stream=pdf_content, filetype="pdf")
         pymupdf_page = pymupdf_doc[edit_request.page - 1]  # Convert to 0-based index
         
@@ -649,16 +662,6 @@ async def edit_text(file_id: str, edit_request: EditRequest):
         # Open PDF for editing
         pymupdf_doc = fitz.open(stream=pdf_content, filetype="pdf")
         pymupdf_page = pymupdf_doc[edit_request.page - 1]  # Convert to 0-based index
-        
-        # BYPASS ALL ALIGNMENT LOGIC - FORCE EXACT ORIGINAL POSITION
-        print(f"🚫 BYPASSING ALL ALIGNMENT - USING EXACT ORIGINAL POSITION")
-        new_bbox = original_bbox  # Use exact original position
-        positioning_strategy = "FORCED_ORIGINAL"
-        
-        print(f"� FORCED POSITIONING:")
-        print(f"   Original bbox: {original_bbox}")
-        print(f"   New bbox: {new_bbox} (SAME AS ORIGINAL)")
-        print(f"   Strategy: {positioning_strategy}")
         
         # Determine effective font weight based on multiple factors
         # High visual boldness score or explicit bold flag should result in bold text
