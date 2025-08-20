@@ -658,22 +658,33 @@ async def edit_text(file_id: str, edit_request: EditRequest):
         # Clear the original text by drawing a white rectangle
         pymupdf_page.draw_rect(original_text_rect, color=None, fill=fitz.utils.getColor("white"))
         
-        # FINAL COORDINATE TEST: Use page dimensions to verify coordinate system
+        # PRESERVE CENTER POSITION: Calculate original element's center point
         page_width = pymupdf_page.rect.width
         page_height = pymupdf_page.rect.height
         
-        # TEST: Place at absolute top-left corner to verify coordinate system
-        test_x = 50   # 50 points from left edge (not 0 to avoid margin issues)
-        test_y = 50   # 50 points from top (PyMuPDF: 0,0 is top-left)
-        text_point = fitz.Point(test_x, test_y)
+        # Calculate the CENTER of the original element
+        original_center_x = (original_bbox[0] + original_bbox[2]) / 2  # (left + right) / 2
+        original_center_y = (original_bbox[1] + original_bbox[3]) / 2  # (top + bottom) / 2
         
-        print(f"📍 COORDINATE SYSTEM TEST:")
+        # Estimate the width of the new text to center it properly
+        estimated_char_width = font_size * 0.6  # Rough estimation for Helvetica
+        estimated_text_width = len(new_text) * estimated_char_width
+        
+        # Calculate where to place the new text so its CENTER aligns with original CENTER
+        new_text_x = original_center_x - (estimated_text_width / 2)  # Move left by half text width
+        new_text_y = original_center_y  # Keep same vertical center (PyMuPDF baseline)
+        
+        text_point = fitz.Point(new_text_x, new_text_y)
+        
+        print(f"📍 CENTER PRESERVATION:")
         print(f"   Page size: {page_width:.1f} x {page_height:.1f}")
         print(f"   Original bbox: {original_bbox}")
-        print(f"   TEST X: {test_x} (50pt from left)")
-        print(f"   TEST Y: {test_y} (50pt from top)")
+        print(f"   Original center: ({original_center_x:.1f}, {original_center_y:.1f})")
+        print(f"   New text: '{new_text}' (length: {len(new_text)})")
+        print(f"   Estimated text width: {estimated_text_width:.1f}")
+        print(f"   New text position: ({new_text_x:.1f}, {new_text_y:.1f})")
         print(f"   Text point: ({text_point.x:.2f}, {text_point.y:.2f})")
-        print(f"   Expected: Top-left area of page!")
+        print(f"   Result: New text CENTER should align with original CENTER!")
         print(f"   Strategy: {positioning_strategy}")
         print(f"   Spacing: char={char_spacing:.1f}, word={word_spacing:.1f}")
         
