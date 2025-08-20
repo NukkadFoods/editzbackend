@@ -16,10 +16,31 @@ import json
 
 def extract_pymupdf_metadata(pdf_content: bytes, page_num: int = None) -> Dict[str, Any]:
     """
-    Extract enhanced text metadata using ONLY PyMuPDF - lightweight but powerful
+    Extract enhanced text metadata using ONLY PyMuPDF - with safety limits for distorted PDFs
     """
-    doc = fitz.open(stream=pdf_content, filetype="pdf")
+    try:
+        doc = fitz.open(stream=pdf_content, filetype="pdf")
+        
+        # SAFETY CHECK: Validate PDF document
+        if not doc or doc.page_count == 0:
+            print("⚠️ Invalid or empty PDF document")
+            return {}
+            
+        print(f"📄 PDF opened successfully: {doc.page_count} pages")
+        
+    except Exception as e:
+        print(f"❌ Failed to open PDF: {e}")
+        return {}
+    
     metadata = {}
+    
+    # SAFETY LIMITS to prevent infinite extraction on corrupted/distorted PDFs
+    MAX_TEXT_ITEMS_PER_PAGE = 1000  # Limit per page
+    MAX_TOTAL_TEXT_ITEMS = 5000     # Global limit
+    MIN_TEXT_LENGTH = 1             # Minimum meaningful text length
+    MAX_TEXT_LENGTH = 500           # Maximum reasonable text length
+    
+    total_items_processed = 0
     
     # Process specific page or all pages
     pages_to_process = [page_num] if page_num is not None else range(len(doc))
@@ -28,74 +49,127 @@ def extract_pymupdf_metadata(pdf_content: bytes, page_num: int = None) -> Dict[s
         if page_idx >= len(doc):
             continue
             
-        page = doc[page_idx]
-        
-        # Get text with detailed font information using PyMuPDF's dict format
-        text_dict = page.get_text("dict", flags=11)
+        try:
+            page = doc[page_idx]
+            page_items_processed = 0
+            
+            print(f"🔍 Processing page {page_idx + 1}...")
+            
+            # Get text with detailed font information using PyMuPDF's dict format
+            text_dict = page.get_text("dict", flags=11)
+            
+            # SAFETY CHECK: Validate text_dict structure
+            if not text_dict or "blocks" not in text_dict:
+                print(f"⚠️ Invalid text structure on page {page_idx + 1}")
+                continue
+                
+        except Exception as e:
+            print(f"❌ Error processing page {page_idx + 1}: {e}")
+            continue
         
         for block in text_dict["blocks"]:
             if "lines" in block:
                 for line in block["lines"]:
                     for span in line["spans"]:
+                        # SAFETY CHECK: Stop if we hit limits
+                        if page_items_processed >= MAX_TEXT_ITEMS_PER_PAGE:
+                            print(f"⚠️ Hit per-page limit ({MAX_TEXT_ITEMS_PER_PAGE}) on page {page_idx + 1}")
+                            break
+                        if total_items_processed >= MAX_TOTAL_TEXT_ITEMS:
+                            print(f"⚠️ Hit global limit ({MAX_TOTAL_TEXT_ITEMS}) - stopping extraction")
+                            break
+                        
                         text = span["text"].strip()
-                        if text:  # Only process non-empty text
-                            
-                            # Enhanced font analysis using PyMuPDF
-                            font_name = span["font"]
-                            font_size = span["size"]
-                            flags = span["flags"]
-                            bbox = span["bbox"]
-                            color = span["color"]
-                            
-                            # ENHANCED BOLDNESS DETECTION using PyMuPDF flags
-                            is_bold_flag = bool(flags & 2**4)  # Bold flag (bit 16)
-                            is_bold_name = any(bold_word in font_name.lower() 
-                                             for bold_word in ['bold', 'heavy', 'black'])
-                            
-                            # Calculate boldness score
-                            boldness_score = 0
-                            if is_bold_flag:
-                                boldness_score += 0.6
-                            if is_bold_name:
-                                boldness_score += 0.4
-                            
-                            # Font weight estimation
-                            font_weight = 700 if (is_bold_flag or is_bold_name) else 400
-                            
-                            # SIZE ANALYSIS - actual rendered height
-                            actual_height = bbox[3] - bbox[1]
-                            size_ratio = actual_height / font_size if font_size > 0 else 1.0
-                            
-                            # RGB Color conversion
-                            if isinstance(color, int):
-                                r = (color >> 16) & 255
-                                g = (color >> 8) & 255  
-                                b = color & 255
-                                rgb_color = (r/255.0, g/255.0, b/255.0)
-                            else:
-                                rgb_color = (0, 0, 0)  # Default black
-                            
-                            # Create unique key
-                            key = f"page_{page_idx+1}_text_{len(metadata)}"
-                            
-                            metadata[key] = {
-                                "text": text,
-                                "bbox": list(bbox),
-                                "page": page_idx + 1,
-                                "font_name": font_name,
-                                "font_size": font_size,
-                                "actual_height": actual_height,
-                                "size_ratio": size_ratio,
-                                "color": rgb_color,
-                                "color_int": color,
-                                "flags": flags,
-                                "is_bold": is_bold_flag or is_bold_name,
-                                "boldness_score": boldness_score,
-                                "font_weight": font_weight,
-                                "is_italic": bool(flags & 2**1),  # Italic flag
-                                "clean_font_name": font_name,
-                                "visual_boldness_score": boldness_score,
-                            }
+                        
+                        # SAFETY CHECKS: Filter out problematic text
+                        if not text:  # Skip empty text
+                            continue
+                        if len(text) < MIN_TEXT_LENGTH:  # Skip too short text
+                            continue
+                        if len(text) > MAX_TEXT_LENGTH:  # Skip abnormally long text
+                            print(f"⚠️ Skipping oversized text ({len(text)} chars): {text[:50]}...")
+                            continue
+                        
+                        # Enhanced font analysis using PyMuPDF
+                        font_name = span["font"]
+                        font_size = span["size"]
+                        flags = span["flags"]
+                        bbox = span["bbox"]
+                        color = span["color"]
+                        
+                        # SAFETY CHECK: Validate bbox
+                        if not bbox or len(bbox) != 4:
+                            print(f"⚠️ Invalid bbox for text: {text}")
+                            continue
+                        
+                        # ENHANCED BOLDNESS DETECTION using PyMuPDF flags
+                        is_bold_flag = bool(flags & 2**4)  # Bold flag (bit 16)
+                        is_bold_name = any(bold_word in font_name.lower() 
+                                         for bold_word in ['bold', 'heavy', 'black'])
+                        
+                        # Calculate boldness score
+                        boldness_score = 0
+                        if is_bold_flag:
+                            boldness_score += 0.6
+                        if is_bold_name:
+                            boldness_score += 0.4
+                        
+                        # Font weight estimation
+                        font_weight = 700 if (is_bold_flag or is_bold_name) else 400
+                        
+                        # SIZE ANALYSIS - actual rendered height
+                        actual_height = bbox[3] - bbox[1]
+                        size_ratio = actual_height / font_size if font_size > 0 else 1.0
+                        
+                        # RGB Color conversion
+                        if isinstance(color, int):
+                            r = (color >> 16) & 255
+                            g = (color >> 8) & 255  
+                            b = color & 255
+                            rgb_color = (r/255.0, g/255.0, b/255.0)
+                        else:
+                            rgb_color = (0, 0, 0)  # Default black
+                        
+                        # Create unique key
+                        key = f"page_{page_idx+1}_text_{len(metadata)}"
+                        
+                        metadata[key] = {
+                            "text": text,
+                            "bbox": list(bbox),
+                            "page": page_idx + 1,
+                            "font_name": font_name,
+                            "font_size": font_size,
+                            "actual_height": actual_height,
+                            "size_ratio": size_ratio,
+                            "color": rgb_color,
+                            "color_int": color,
+                            "flags": flags,
+                            "is_bold": is_bold_flag or is_bold_name,
+                            "boldness_score": boldness_score,
+                            "font_weight": font_weight,
+                            "is_italic": bool(flags & 2**1),  # Italic flag
+                            "clean_font_name": font_name,
+                            "visual_boldness_score": boldness_score,
+                        }
+                        
+                        page_items_processed += 1
+                        total_items_processed += 1
+                    
+                    # Break out of line loop if hit page limit
+                    if page_items_processed >= MAX_TEXT_ITEMS_PER_PAGE:
+                        break
+                
+                # Break out of block loop if hit page limit  
+                if page_items_processed >= MAX_TEXT_ITEMS_PER_PAGE:
+                    break
+        
+        print(f"📊 Page {page_idx + 1}: Processed {page_items_processed} text items")
+        
+        # Break out of page loop if hit global limit
+        if total_items_processed >= MAX_TOTAL_TEXT_ITEMS:
+            break
+    
+    print(f"✅ Total extraction: {total_items_processed} text items from {len(pages_to_process)} pages")
     
     doc.close()
     return metadata
@@ -110,10 +184,16 @@ def get_smart_alignment(text: str, old_text: str, line_text: str, bbox: tuple, p
     original_center_x = (x0 + x1) / 2
     original_width = x1 - x0
     
-    # Estimate new text width (more accurate calculation)
+    # Estimate new text width (improved calculation)
     font_size = y1 - y0  # Approximate font size
-    estimated_char_width = font_size * 0.6  # Character width estimation
+    # More accurate character width estimation based on font size
+    # Different fonts have different width ratios
+    estimated_char_width = font_size * 0.55  # Slightly narrower estimate for better accuracy
     new_text_width = len(text) * estimated_char_width
+    
+    # Add a small correction factor for common fonts to reduce right shift
+    correction_factor = 0.95  # Slightly reduce width to prevent right drift
+    new_text_width *= correction_factor
     
     # Determine positioning strategy based on original position context
     page_center_x = page_width / 2
@@ -295,7 +375,33 @@ def upload_pdf():
             print(f"📄 Processed all pages in single pass: {len(all_metadata)} text items found")
             
             if not all_metadata:
-                raise Exception("Enhanced extraction returned empty results")
+                print("⚠️ No text metadata extracted - PDF may be image-based or corrupted")
+                print("📄 Attempting basic page count extraction...")
+                
+                # Fallback: Try to get page count even if no text is found
+                try:
+                    doc = fitz.open(stream=file_content, filetype="pdf")
+                    page_count = len(doc)
+                    doc.close()
+                    
+                    print(f"📄 Found {page_count} pages with no extractable text")
+                    
+                    # Return basic PDF info without text items
+                    return jsonify({
+                        "file_id": file_id,
+                        "text_items": [],
+                        "text_metadata": {},
+                        "total_items": 0,
+                        "processing_method": "basic_fallback",
+                        "pdf_data": base64.b64encode(file_content).decode('utf-8'),
+                        "embedded_fonts": {},
+                        "message": f"PDF processed but no text extracted. {page_count} pages found.",
+                        "page_count": page_count
+                    }), 200
+                    
+                except Exception as fallback_error:
+                    print(f"❌ Fallback page count extraction failed: {fallback_error}")
+                    return jsonify({"error": f"PDF processing failed completely: {str(fallback_error)}"}), 500
             
             text_items = []
             text_metadata = {}
@@ -610,21 +716,24 @@ def edit_text(file_id):
         # Clear the original text by drawing a white rectangle
         pymupdf_page.draw_rect(original_text_rect, color=None, fill=fitz.utils.getColor("white"))
         
-        # DEBUGGING: Use EXACT original coordinates to see what happens
-        # If this STILL centers, then PyMuPDF has a different coordinate system
-        original_x = original_bbox[0]  # Exact left edge of original
-        original_y = original_bbox[1]  # Exact top edge of original
+        # USE SMART ALIGNMENT COORDINATES for proper center preservation
+        new_x0, new_y0, new_x1, new_y1 = new_bbox
         
-        text_point = fitz.Point(original_x, original_y)
+        # For PyMuPDF, the text insertion point should be at the bottom-left of where we want the text
+        # So we use the calculated X coordinate and adjust Y to the baseline
+        text_x = new_x0  # Use smart alignment X coordinate
+        text_y = original_bbox[3]  # Keep original baseline Y (bottom of original text)
         
-        print(f"📍 EXACT ORIGINAL COORDINATES TEST:")
+        text_point = fitz.Point(text_x, text_y)
+        
+        print(f"📍 SMART ALIGNMENT POSITIONING:")
         print(f"   Page size: {page_width:.1f} x {page_height:.1f}")
         print(f"   Original bbox: {original_bbox}")
-        print(f"   Using EXACT original X: {original_x}")
-        print(f"   Using EXACT original Y: {original_y}")
-        print(f"   Text point: ({text_point.x:.2f}, {text_point.y:.2f})")
-        print(f"   If this STILL centers, PyMuPDF coordinate system is wrong!")
-        print(f"   Strategy: EXACT_ORIGINAL_COORDINATES")
+        print(f"   Smart alignment bbox: {new_bbox}")
+        print(f"   Text insertion point: ({text_point.x:.2f}, {text_point.y:.2f})")
+        print(f"   Strategy: {positioning_strategy}")
+        print(f"   X shift: {text_x - original_bbox[0]:.2f}")
+        print(f"   Y unchanged (baseline preserved)")
         
         # Determine render mode based on boldness intensity
         # For very high visual boldness, use stroke rendering for extra boldness
