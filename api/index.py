@@ -16,7 +16,7 @@ def extract_pymupdf_metadata(pdf_content: bytes, page_num: int = None) -> Dict[s
     Extract enhanced text metadata using ONLY PyMuPDF - lightweight but powerful
     """
     doc = fitz.open(stream=pdf_content, filetype="pdf")
-    meta        # Open        # Determine effective font weight based on multiple factors
+    meta        # Open              # Determine effective font weight based on multiple factorsne effective font weight based on multiple factors
         # High visual boldness score or explicit bold flag should result in bold text
         effective_bold = is_bold or (visual_boldness > 50.0)
         
@@ -279,27 +279,33 @@ def calculate_new_text_position(
 
 def get_smart_alignment(text: str, old_text: str, line_text: str, bbox: tuple, page_width: float, all_text_items: list) -> dict:
     """
-    DEBUGGING: Force all text to preserve original position - NO CENTERING
+    CENTER PRESERVATION: Calculate position to maintain center alignment
     """
     x0, y0, x1, y1 = bbox
     font_size = y1 - y0  # Approximate font size from bbox height
     
-    print(f"🎯 FORCE PRESERVE ORIGINAL POSITION:")
+    # Calculate center of original element
+    original_center_x = (x0 + x1) / 2
+    original_center_y = (y0 + y1) / 2
+    
+    # Estimate new text width
+    estimated_char_width = font_size * 0.6
+    estimated_text_width = len(text) * estimated_char_width
+    
+    # Position new text to center on original center
+    new_x0 = original_center_x - (estimated_text_width / 2)
+    new_x1 = original_center_x + (estimated_text_width / 2)
+    new_bbox = [new_x0, y0, new_x1, y1]
+    
+    print(f"🎯 CENTER PRESERVATION ALIGNMENT:")
     print(f"   Text: '{text}' (was: '{old_text}')")
     print(f"   Original bbox: {bbox}")
-    
-    # FORCE: Always preserve left edge, extend right
-    original_width = x1 - x0
-    char_width_ratio = len(text) / len(old_text) if len(old_text) > 0 else 1.0
-    new_width = original_width * char_width_ratio
-    
-    new_bbox = [x0, y0, x0 + new_width, y1]
-    
-    print(f"   Forced left preservation: {new_bbox}")
+    print(f"   Original center: ({original_center_x:.1f}, {original_center_y:.1f})")
+    print(f"   New bbox: {new_bbox}")
     
     return {
-        'strategy': 'force_left_preserve',
-        'reasoning': f'DEBUGGING: Forcing left edge preservation for "{text}"',
+        'strategy': 'center_preserve',
+        'reasoning': f'Centering "{text}" on original element center',
         'new_bbox': new_bbox
     }
 
