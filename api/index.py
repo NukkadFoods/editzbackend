@@ -16,8 +16,24 @@ def extract_pymupdf_metadata(pdf_content: bytes, page_num: int = None) -> Dict[s
     Extract enhanced text metadata using ONLY PyMuPDF - lightweight but powerful
     """
     doc = fitz.open(stream=pdf_content, filetype="pdf")
-    metadata = {}
-    
+    meta        # Open        # Determine effective font weight based on multiple factors
+        # High visual boldness score or explicit bold flag should result in bold text
+        effective_bold = is_bold or (visual_boldness > 50.0)
+        
+        print(f"🔍 BOLDNESS ANALYSIS:")
+        print(f"   Flag Bold: {is_bold}")
+        print(f"   Visual Boldness Score: {visual_boldness}")
+        print(f"   Effective Bold: {effective_bold}")       pymupdf_doc = fitz.open(stream=pdf_content, filetype="pdf")
+        pymupdf_page = pymupdf_doc[edit_request.page - 1]  # Convert to 0-based index
+        
+        # USE CENTER PRESERVATION LOGIC (no bypass)
+        print(f"✅ USING CENTER PRESERVATION LOGIC")
+        positioning_strategy = "CENTER_PRESERVATION"
+        
+        print(f"🎯 CENTER PRESERVATION ACTIVE:")
+        print(f"   Original bbox: {original_bbox}")
+        print(f"   Strategy: {positioning_strategy}")
+        print(f"   Will calculate center-aligned position...") 
     # Proce        # Use the intelligently calculated position for new text with baseline adjustment
         # COORDINATE SYSTEM FIX: bbox gives TOP-LEFT coordinates, insert_text needs BASELINE
         original_text_x = original_bbox[0]  # Left edge (correct)
