@@ -658,18 +658,22 @@ async def edit_text(file_id: str, edit_request: EditRequest):
         # Clear the original text by drawing a white rectangle
         pymupdf_page.draw_rect(original_text_rect, color=None, fill=fitz.utils.getColor("white"))
         
-        # Use the intelligently calculated position for new text with baseline adjustment
+        # FINAL COORDINATE TEST: Use page dimensions to verify coordinate system
+        page_width = pymupdf_page.rect.width
+        page_height = pymupdf_page.rect.height
+        
         # TEST: Place at absolute top-left corner to verify coordinate system
-        test_x = 0  # Absolute left edge
-        test_y = 50  # 50 points from top (to avoid being cut off)
+        test_x = 50   # 50 points from left edge (not 0 to avoid margin issues)
+        test_y = 50   # 50 points from top (PyMuPDF: 0,0 is top-left)
         text_point = fitz.Point(test_x, test_y)
         
-        print(f"📍 ABSOLUTE TOP-LEFT TEST:")
+        print(f"📍 COORDINATE SYSTEM TEST:")
+        print(f"   Page size: {page_width:.1f} x {page_height:.1f}")
         print(f"   Original bbox: {original_bbox}")
-        print(f"   Test X: {test_x} (absolute left)")
-        print(f"   Test Y: {test_y} (50pt from top)")
+        print(f"   TEST X: {test_x} (50pt from left)")
+        print(f"   TEST Y: {test_y} (50pt from top)")
         print(f"   Text point: ({text_point.x:.2f}, {text_point.y:.2f})")
-        print(f"   If this STILL centers, coordinate system is wrong!")
+        print(f"   Expected: Top-left area of page!")
         print(f"   Strategy: {positioning_strategy}")
         print(f"   Spacing: char={char_spacing:.1f}, word={word_spacing:.1f}")
         
@@ -679,15 +683,62 @@ async def edit_text(file_id: str, edit_request: EditRequest):
         if visual_boldness > 75.0:
             render_mode = 2  # Fill and stroke for extra boldness
         
-        # Insert the new text with enhanced positioning and styling
-        text_length = pymupdf_page.insert_text(
-            text_point,
-            new_text,
+        # FIXED: Use correct PyMuPDF method and parameters
+        print(f"� USING CORRECT PYMUPDF METHOD:")
+        print(f"   Page rect: {pymupdf_page.rect}")
+        print(f"   Media box: {pymupdf_page.mediabox}")
+        print(f"   Crop box: {pymupdf_page.cropbox}")
+        print(f"   Original font variable: {pymupdf_font}")
+        
+        # FIX 1: Use module-level fitz.insert_text() instead of page method
+        # FIX 2: Use simple 'helv' font instead of complex mapping
+        # FIX 3: Verify correct parameter order: (page, point, text, ...)
+        simple_font = "helv"  # PyMuPDF built-in Helvetica
+        text_length = fitz.insert_text(
+            pymupdf_page,      # page object
+            text_point,        # point coordinates
+            new_text,          # text to insert
             fontsize=font_size,
-            fontname=pymupdf_font,
+            fontname=simple_font,
             color=original_color_normalized,
             render_mode=render_mode
         )
+        
+        print(f"📝 FIXED insert_text called with:")
+        print(f"   Method: fitz.insert_text() (module function)")
+        print(f"   Page: {pymupdf_page}")
+        print(f"   Point: {text_point} (x={text_point.x}, y={text_point.y})")
+        print(f"   Text: '{new_text}'")
+        print(f"   Font: {simple_font} (simple built-in), Size: {font_size}")
+        print(f"   Color: {original_color_normalized}")
+        print(f"   Result length: {text_length}")
+        
+        # Check if text was actually inserted at the specified coordinates
+        text_instances = pymupdf_page.search_for(new_text)
+        print(f"🔍 Text instances found after insertion: {len(text_instances)}")
+        for i, instance in enumerate(text_instances):
+            print(f"   Instance {i}: {instance}")
+        
+        # Get all text blocks to see where our text ended up
+        blocks = pymupdf_page.get_text("dict")
+        our_text_blocks = []
+        for block in blocks.get("blocks", []):
+            if "lines" in block:
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        if new_text in span.get("text", ""):
+                            our_text_blocks.append({
+                                "text": span["text"],
+                                "bbox": span["bbox"],
+                                "font": span["font"]
+                            })
+        
+        print(f"🎯 OUR TEXT BLOCKS FOUND: {len(our_text_blocks)}")
+        for i, block in enumerate(our_text_blocks):
+            bbox = block["bbox"]
+            print(f"   Block {i}: '{block['text']}' at bbox {bbox}")
+            print(f"   Block {i}: x={bbox[0]:.1f}, y={bbox[1]:.1f} (top-left)")
+            print(f"   Block {i}: Center would be at x={bbox[0]+bbox[2]/2:.1f}, y={bbox[1]+bbox[3]/2:.1f}")
         
         print(f"✅ Text successfully replaced with INTELLIGENT POSITIONING + PRECISE FONT MATCHING")
         print(f"   Font: {pymupdf_font} (was: {font_name}), Strategy: {positioning_strategy}")
