@@ -102,98 +102,80 @@ def extract_pymupdf_metadata(pdf_content: bytes, page_num: int = None) -> Dict[s
 
 def get_smart_alignment(text: str, old_text: str, line_text: str, bbox: tuple, page_width: float, all_text_items: list) -> dict:
     """
-    INTELLIGENT TEXT ALIGNMENT using PyMuPDF-only analysis
+    PROPER CENTER PRESERVATION: Keep text centered on original element with context detection
     """
     x0, y0, x1, y1 = bbox
-    text_width = x1 - x0
-    text_height = y1 - y0
     
-    # Page layout analysis
+    # Calculate original element's center point
+    original_center_x = (x0 + x1) / 2
+    original_width = x1 - x0
+    
+    # Estimate new text width (more accurate calculation)
+    font_size = y1 - y0  # Approximate font size
+    estimated_char_width = font_size * 0.6  # Character width estimation
+    new_text_width = len(text) * estimated_char_width
+    
+    # Determine positioning strategy based on original position context
     page_center_x = page_width / 2
-    text_center_x = (x0 + x1) / 2
     
-    # STATION NAME DETECTION - Enhanced patterns
-    station_patterns = [
-        r'^[A-Z\s]+\s*\([A-Z]{2,4}\)$',  # "NEW DELHI (NDLS)"
-        r'^[A-Z]{2,4}\s*\([A-Z]{2,4}\)$',  # "NDLS (NDLS)"
-        r'^\w+\s*\([\w\s]+\)$'  # General pattern with parentheses
-    ]
-    
-    is_station = False
-    text_upper = text.upper()
-    
-    print(f"🚉 STATION DETECTION DEBUG:")
-    print(f"   Text: '{text}' -> Upper: '{text_upper}'")
-    print(f"   Testing patterns:")
-    
-    for i, pattern in enumerate(station_patterns, 1):
-        match = re.match(pattern, text_upper)
-        print(f"   Pattern {i}: {pattern} -> {'✅ MATCH' if match else '❌ No match'}")
-        if match:
-            is_station = True
-            break
-    
-    print(f"   Is Station: {is_station}")
-    
-    # INTELLIGENT ALIGNMENT STRATEGY
-    if is_station:
-        # Station names should be centered 
-        new_width = len(text) * (text_height * 0.6)  # Estimate width
-        new_x0 = page_center_x - (new_width / 2)
-        new_x1 = page_center_x + (new_width / 2)
-        
-        return {
-            'strategy': 'center_station',
-            'reasoning': f'Station name detected: "{text}" - maintaining center position',
-            'new_bbox': [new_x0, y0, new_x1, y1]
-        }
-    
-    # Check positioning context
-    is_center_positioned = abs(text_center_x - page_center_x) < (page_width * 0.15)
-    is_left_positioned = x0 < (page_width / 3)
-    is_right_positioned = x0 > (page_width * 2/3)
+    # Check if original text was center-positioned (within 15% of page center)
+    is_center_positioned = abs(original_center_x - page_center_x) < (page_width * 0.15)
     
     if is_center_positioned:
-        # Keep center alignment but adjust for new text width
-        new_width = len(text) * (text_height * 0.6)
-        new_x0 = page_center_x - (new_width / 2)
-        new_x1 = page_center_x + (new_width / 2)
+        # PRESERVE THE EXACT CENTER POINT of the original element
+        # Position new text so its center matches the original center exactly
+        new_x0 = original_center_x - (new_text_width / 2)
+        new_x1 = original_center_x + (new_text_width / 2)
+        
+        # Ensure we don't go off the page boundaries
+        if new_x0 < 0:
+            shift = -new_x0
+            new_x0 = 0
+            new_x1 = new_text_width
+            print(f"   Adjusted for page boundary: shifted right by {shift:.2f}")
+        elif new_x1 > page_width:
+            shift = new_x1 - page_width
+            new_x1 = page_width
+            new_x0 = page_width - new_text_width
+            print(f"   Adjusted for page boundary: shifted left by {shift:.2f}")
+        
+        new_bbox = [new_x0, y0, new_x1, y1]
+        
+        print(f"🎯 CENTER PRESERVATION:")
+        print(f"   Original element center: {original_center_x:.2f}")
+        print(f"   Original bbox: [{x0:.2f}, {y0:.2f}, {x1:.2f}, {y1:.2f}]")
+        print(f"   New text width: {new_text_width:.2f}")
+        print(f"   New bbox: [{new_x0:.2f}, {y0:.2f}, {new_x1:.2f}, {y1:.2f}]")
+        print(f"   New element center: {(new_x0 + new_x1) / 2:.2f}")
+        print(f"   Center preserved: {abs(original_center_x - (new_x0 + new_x1) / 2) < 0.1}")
         
         return {
-            'strategy': 'maintain_center',
-            'reasoning': f'Center positioned (x: {text_center_x:.1f}, center: {page_center_x:.1f}) - maintaining center',
-            'new_bbox': [new_x0, y0, new_x1, y1]
+            'strategy': 'center_preserve',
+            'reasoning': f'Center positioning detected - preserving exact center point',
+            'new_bbox': new_bbox
         }
-    
-    elif is_left_positioned:
-        # Expand to the right from left position
-        new_width = len(text) * (text_height * 0.6)
-        
-        return {
-            'strategy': 'expand_right',
-            'reasoning': f'Left positioned (x: {x0:.1f}) - expanding right',
-            'new_bbox': [x0, y0, x0 + new_width, y1]
-        }
-    
-    elif is_right_positioned:
-        # Expand to the left from right position  
-        new_width = len(text) * (text_height * 0.6)
-        
-        return {
-            'strategy': 'expand_left',
-            'reasoning': f'Right positioned (x: {x0:.1f}) - expanding left',
-            'new_bbox': [x0 - new_width, y0, x0, y1]
-        }
-    
     else:
-        # Default: expand right from current position
-        new_width = len(text) * (text_height * 0.6)
+        # For non-center text, keep left edge fixed (normal text flow)
+        new_x0 = x0
+        new_x1 = x0 + new_text_width
+        
+        # Check page boundaries
+        if new_x1 > page_width:
+            new_x1 = page_width
+            new_x0 = max(0, page_width - new_text_width)
+        
+        new_bbox = [new_x0, y0, new_x1, y1]
+        
+        print(f"📝 LEFT-ALIGNED PRESERVATION:")
+        print(f"   Original bbox: [{x0:.2f}, {y0:.2f}, {x1:.2f}, {y1:.2f}]")
+        print(f"   New bbox: [{new_x0:.2f}, {y0:.2f}, {new_x1:.2f}, {y1:.2f}]")
         
         return {
-            'strategy': 'expand_right',
-            'reasoning': f'Left positioned (x: {x0:.1f}) - expanding right',
-            'new_bbox': [x0, y0, x0 + new_width, y1]
+            'strategy': 'left_preserve',
+            'reasoning': f'Left-aligned text - preserving left edge',
+            'new_bbox': new_bbox
         }
+
 
 def map_to_pymupdf_font(font_name: str, is_bold: bool = False, is_italic: bool = False) -> str:
     """
