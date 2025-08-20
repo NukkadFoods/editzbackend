@@ -16,7 +16,20 @@ def extract_pymupdf_metadata(pdf_content: bytes, page_num: int = None) -> Dict[s
     Extract enhanced text metadata using ONLY PyMuPDF - lightweight but powerful
     """
     doc = fitz.open(stream=pdf_content, filetype="pdf")
-    meta        # Open                    # Determine effective font weight based on multiple factorsne effective font weight based on multiple factorsne effective font weight based on multiple factors
+    meta        # Open               
+        # Open PDF for editing
+        pymupdf_doc = fitz.open(stream=pdf_content, filetype="pdf")
+        pymupdf_page = pymupdf_doc[edit_request.page - 1]  # Convert to 0-based index
+        
+        # USE CENTER PRESERVATION LOGIC
+        print(f"✅ USING CENTER PRESERVATION LOGIC")
+        positioning_strategy = "CENTER_PRESERVATION"
+        
+        print(f"🎯 CENTER PRESERVATION ACTIVE:")
+        print(f"   Original bbox: {original_bbox}")
+        print(f"   Strategy: {positioning_strategy}")
+        
+        # Determine effective font weight based on multiple factorsetermine effective font weight based on multiple factorsne effective font weight based on multiple factorsne effective font weight based on multiple factors
         # High visual boldness score or explicit bold flag should result in bold text
         effective_bold = is_bold or (visual_boldness > 50.0)
         
